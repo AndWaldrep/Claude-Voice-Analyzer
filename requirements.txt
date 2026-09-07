@@ -1,0 +1,15 @@
+# Versions below are the ones this tool was tested with.
+numpy==2.4.6
+scipy==1.17.1
+soundfile==0.14.0
+librosa==0.11.0
+praat-parselmouth==0.4.7
+imageio-ffmpeg==0.6.0
+faster-whisper==1.2.1
+# transitive deps of faster-whisper, pinned for reproducibility
+ctranslate2==4.8.2
+huggingface-hub==1.30.0
+tokenizers==0.23.2
+onnxruntime==1.29.0
+# tests
+pytest

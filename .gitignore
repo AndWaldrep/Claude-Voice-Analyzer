@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+reports/
+*.m4a
+*.mp3
+*.wav
+*.ogg
+*.flac
+.pytest_cache/
