@@ -201,6 +201,8 @@ def diarize(y: np.ndarray, sr: int, tr: Transcript, n_speakers: int | None = Non
     wins = _windows(regions, win, hop)
     if not wins:
         return Diarization([], [], 0, [])
+    if embeddings is not None and len(embeddings) != len(wins):
+        embeddings = None            # stale cache (different windows) -> recompute
     embs = embeddings if embeddings is not None else embed_windows(y, sr, wins, device)
     k_est, ev = estimate_speakers(embs, single_gap=threshold)
     labels = _smooth(cluster(embs, n_speakers, threshold))
@@ -239,6 +241,21 @@ def diarize(y: np.ndarray, sr: int, tr: Transcript, n_speakers: int | None = Non
     d.eigenvalues = ev[:8].tolist()
     d.k_estimated = k_est
     return d
+
+
+def speaker_spans(dia: Diarization, spk: str) -> list[tuple[float, float]]:
+    """Time spans 'owned' by a speaker: consecutive turns with nobody else in between are merged,
+    so a thinking pause between two of their own sentences counts as their pause, not dead air."""
+    spans: list[list[float]] = []
+    prev_spk = None
+    for t in dia.turns:
+        if t.speaker == spk:
+            if spans and prev_spk == spk:
+                spans[-1][1] = t.end
+            else:
+                spans.append([t.start, t.end])
+        prev_spk = t.speaker
+    return [(a, b) for a, b in spans]
 
 
 def speaker_mask(dia: Diarization, spk: str, n_frames: int, frame_s: float) -> np.ndarray:

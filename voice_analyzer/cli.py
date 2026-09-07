@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import sys
 import time
 from pathlib import Path
@@ -43,6 +45,7 @@ def main(argv=None) -> int:
     p.add_argument("--highpass", type=float, default=80.0, help="high-pass cutoff Hz (0 to disable)")
     p.add_argument("--pitch-floor", type=float, default=75.0)
     p.add_argument("--pitch-ceiling", type=float, default=400.0)
+    p.add_argument("--no-cache", action="store_true", help="ignore cached transcript / embeddings in <out>/.cache")
     a = p.parse_args(argv)
 
     t0 = time.time()
@@ -53,12 +56,23 @@ def main(argv=None) -> int:
     n_frames = len(y) // int(sr * FRAME_S)
     log(f"decoded {total_s:.1f} s @ {sr} Hz")
 
+    out = Path(a.out)
+    cache = out / ".cache"
+    cache.mkdir(parents=True, exist_ok=True)
+    key = f"{Path(a.audio).stem}-{hashlib.sha1(y_raw[::997].tobytes()).hexdigest()[:10]}"
     tr = None
     if not a.no_transcript:
         from . import transcribe
 
-        tr = transcribe.transcribe(y, sr, a.model)
-        log(f"transcribed {len(tr.words)} words with {a.model}")
+        tcache = cache / f"{key}-{a.model}.json"
+        if tcache.exists() and not a.no_cache:
+            d = json.loads(tcache.read_text())
+            tr = transcribe.Transcript([transcribe.Word(**w) for w in d["words"]], [tuple(s) for s in d["segments"]], d["language"])
+            log(f"loaded cached transcript ({len(tr.words)} words, {a.model})")
+        else:
+            tr = transcribe.transcribe(y, sr, a.model)
+            tcache.write_text(json.dumps({"words": [w.__dict__ for w in tr.words], "segments": tr.segments, "language": tr.language}))
+            log(f"transcribed {len(tr.words)} words with {a.model}")
 
     n_spk = None if a.speakers == "auto" else int(a.speakers)
     dia = None
@@ -66,7 +80,11 @@ def main(argv=None) -> int:
         from . import diarize
 
         vad = features.volume_stats(y, sr).speech_mask
-        dia = diarize.diarize(y, sr, tr, n_spk, threshold=a.diarize_threshold, speech_mask=vad)
+        ecache = cache / f"{key}-{a.model}-emb.npy"
+        embs = np.load(ecache) if ecache.exists() and not a.no_cache else None
+        dia = diarize.diarize(y, sr, tr, n_spk, threshold=a.diarize_threshold, speech_mask=vad, embeddings=embs)
+        if embs is None and getattr(dia, "embeddings", None) is not None:
+            np.save(ecache, dia.embeddings)
         log(f"diarized: {len(dia.speakers)} speaker(s) (eigengap estimate {dia.k_estimated}, eigenvalues "
             f"{', '.join(f'{v:.3f}' for v in dia.eigenvalues[:5])}), {len(dia.turns)} turns from {dia.n_windows} windows")
 
@@ -79,7 +97,7 @@ def main(argv=None) -> int:
         interaction = diarize.interaction_stats(dia, total_s, speech_mask=vad, frame_s=FRAME_S)
         for spk in dia.speakers:
             mask = diarize.speaker_mask(dia, spk, n_frames, FRAME_S)
-            spans = [(t.start, t.end) for t in dia.turns_for(spk)]
+            spans = diarize.speaker_spans(dia, spk)
             m = speaker_metrics(y, sr, mask, dia.words_for(spk), total_s, a.pitch_floor, a.pitch_ceiling, spans)
             st = tone.analyze_speaker_tone(spk, dia.turns_for(spk), m["volume"], m["pitch"], y=y, sr=sr, categorical_model=emo)
             speakers.append({"name": spk, "metrics": m, "tone": st})
@@ -94,8 +112,6 @@ def main(argv=None) -> int:
     whole = features.volume_stats(y, sr, mask=features.speech_mask_from_words(tr.words, n_frames, FRAME_S) if tr and tr.words else None)
     md, data = report.build_report(Path(a.audio).name, total_s, whole.snr_db, whole.noise_floor_db, speakers, interaction,
                                    dia.turns if dia else None, tr.text if tr else None)
-    out = Path(a.out)
-    out.mkdir(parents=True, exist_ok=True)
     stem = Path(a.audio).stem
     (out / f"{stem}.md").write_text(md)
     report.dump_json(data, str(out / f"{stem}.json"))
