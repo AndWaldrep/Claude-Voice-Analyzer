@@ -1,4 +1,4 @@
-"""CLI: python -m voice_analyzer <audio> [--no-transcript] [--model base.en] [-o outdir]"""
+"""CLI: python -m voice_analyzer <audio> [options]"""
 from __future__ import annotations
 
 import argparse
@@ -6,59 +6,100 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
+
 from . import audio, features, report
+
+FRAME_S = 0.05
+
+
+def speaker_metrics(y, sr, mask, words, total_s, pitch_floor, pitch_ceiling, spans=None):
+    from . import text_metrics
+    from .transcribe import Transcript
+
+    vol = features.volume_stats(y, sr, mask=mask)
+    pau = features.pause_stats(vol, within=spans)
+    pit = features.pitch_stats(y, sr, pitch_floor, pitch_ceiling, vol.speech_mask)
+    cla = features.clarity_stats(y, sr, vol.speech_mask)
+    tail = features.trailing_off(vol, pau)
+    m = {"volume": vol, "pitch": pit, "pauses": pau, "clarity": cla, "trailing": tail}
+    if words is not None:
+        tr = Transcript(words=words, segments=[(0, total_s, " ".join(w.word for w in words))], language="en")
+        m["pace"] = text_metrics.pace_stats(tr, pau.total_time_s, pau.speech_time_s)
+        m["fluency"] = text_metrics.fluency_stats(tr, pau.total_time_s)
+        m["enunciation"] = text_metrics.enunciation_stats(tr)
+    return m
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description="Offline voice / oratory analyzer")
+    p = argparse.ArgumentParser(description="Offline voice / oratory analyzer with speaker diarization and tone indicators")
     p.add_argument("audio", help="any audio file ffmpeg can read (m4a, mp3, wav, ...)")
     p.add_argument("-o", "--out", default="reports", help="output directory")
-    p.add_argument("--no-transcript", action="store_true", help="skip speech-to-text (acoustic metrics only)")
-    p.add_argument("--model", default="base.en", help="faster-whisper model size (tiny.en, base.en, small.en, medium.en)")
+    p.add_argument("--no-transcript", action="store_true", help="skip speech-to-text (acoustic metrics only, single speaker)")
+    p.add_argument("--model", default="small.en", help="faster-whisper model (tiny.en, base.en, small.en, medium.en, large-v3)")
+    p.add_argument("--speakers", default="auto", help="number of speakers, or 'auto' (default), or 1 to skip diarization")
+    p.add_argument("--diarize-threshold", type=float, default=0.12, help="single-speaker cut for auto speaker count (higher = more willing to call it one voice)")
+    p.add_argument("--emotion-model", action="store_true", help="also run the experimental categorical emotion model per turn (slower)")
     p.add_argument("--highpass", type=float, default=80.0, help="high-pass cutoff Hz (0 to disable)")
     p.add_argument("--pitch-floor", type=float, default=75.0)
     p.add_argument("--pitch-ceiling", type=float, default=400.0)
     a = p.parse_args(argv)
 
     t0 = time.time()
+    log = lambda msg: print(f"[{time.time()-t0:6.1f}s] {msg}", file=sys.stderr)
     y_raw, sr = audio.load_audio(a.audio)
     y = audio.highpass(y_raw, sr, a.highpass)
-    print(f"[{time.time()-t0:5.1f}s] decoded {len(y)/sr:.1f} s @ {sr} Hz", file=sys.stderr)
+    total_s = len(y) / sr
+    n_frames = len(y) // int(sr * FRAME_S)
+    log(f"decoded {total_s:.1f} s @ {sr} Hz")
 
     tr = None
-    mask = None
     if not a.no_transcript:
         from . import transcribe
 
         tr = transcribe.transcribe(y, sr, a.model)
-        print(f"[{time.time()-t0:5.1f}s] transcribed {len(tr.words)} words", file=sys.stderr)
-        if tr.words:
-            mask = features.speech_mask_from_words(tr.words, len(y) // int(sr * 0.05), 0.05)
+        log(f"transcribed {len(tr.words)} words with {a.model}")
 
-    vol = features.volume_stats(y, sr, mask=mask)
-    pau = features.pause_stats(vol)
-    pit = features.pitch_stats(y, sr, a.pitch_floor, a.pitch_ceiling, vol.speech_mask)
-    cla = features.clarity_stats(y, sr, vol.speech_mask)
-    tail = features.trailing_off(vol, pau)
-    print(f"[{time.time()-t0:5.1f}s] acoustic features done", file=sys.stderr)
+    n_spk = None if a.speakers == "auto" else int(a.speakers)
+    dia = None
+    if tr is not None and tr.words and n_spk != 1:
+        from . import diarize
 
-    m = {"volume": vol, "pitch": pit, "pauses": pau, "clarity": cla, "trailing": tail}
-    text = None
-    if tr is not None:
-        from . import text_metrics
+        vad = features.volume_stats(y, sr).speech_mask
+        dia = diarize.diarize(y, sr, tr, n_spk, threshold=a.diarize_threshold, speech_mask=vad)
+        log(f"diarized: {len(dia.speakers)} speaker(s) (eigengap estimate {dia.k_estimated}, eigenvalues "
+            f"{', '.join(f'{v:.3f}' for v in dia.eigenvalues[:5])}), {len(dia.turns)} turns from {dia.n_windows} windows")
 
-        m["pace"] = text_metrics.pace_stats(tr, pau.total_time_s, pau.speech_time_s)
-        m["fluency"] = text_metrics.fluency_stats(tr, pau.total_time_s)
-        m["enunciation"] = text_metrics.enunciation_stats(tr)
-        text = tr.text
+    speakers = []
+    interaction = None
+    if dia is not None and len(dia.speakers) >= 1:
+        from . import tone
 
-    md, data = report.build_report(m, text, Path(a.audio).name)
+        emo = tone.load_categorical() if a.emotion_model else None
+        interaction = diarize.interaction_stats(dia, total_s, speech_mask=vad, frame_s=FRAME_S)
+        for spk in dia.speakers:
+            mask = diarize.speaker_mask(dia, spk, n_frames, FRAME_S)
+            spans = [(t.start, t.end) for t in dia.turns_for(spk)]
+            m = speaker_metrics(y, sr, mask, dia.words_for(spk), total_s, a.pitch_floor, a.pitch_ceiling, spans)
+            st = tone.analyze_speaker_tone(spk, dia.turns_for(spk), m["volume"], m["pitch"], y=y, sr=sr, categorical_model=emo)
+            speakers.append({"name": spk, "metrics": m, "tone": st})
+        log("per-speaker metrics + tone done")
+    else:
+        mask = features.speech_mask_from_words(tr.words, n_frames, FRAME_S) if tr and tr.words else None
+        m = speaker_metrics(y, sr, mask, tr.words if tr else None, total_s, a.pitch_floor, a.pitch_ceiling)
+        speakers.append({"name": "Speaker 1", "metrics": m, "tone": None})
+        log("acoustic features done")
+
+    # overall SNR from a whole-file pass
+    whole = features.volume_stats(y, sr, mask=features.speech_mask_from_words(tr.words, n_frames, FRAME_S) if tr and tr.words else None)
+    md, data = report.build_report(Path(a.audio).name, total_s, whole.snr_db, whole.noise_floor_db, speakers, interaction,
+                                   dia.turns if dia else None, tr.text if tr else None)
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     stem = Path(a.audio).stem
     (out / f"{stem}.md").write_text(md)
     report.dump_json(data, str(out / f"{stem}.json"))
-    print(f"[{time.time()-t0:5.1f}s] wrote {out / (stem + '.md')} and .json", file=sys.stderr)
+    log(f"wrote {out / (stem + '.md')} and .json")
     print(md)
     return 0
 

@@ -24,7 +24,7 @@ class VolumeStats:
     median_db: float
     p10_db: float
     p90_db: float
-    dynamic_range_db: float         # p90 - p10 over speech frames
+    dynamic_range_db: float         # p90 - p10 of 0.5 s peak levels during speech
     std_db: float
     peak_dbfs: float
     clipped_pct: float
@@ -55,14 +55,23 @@ def volume_stats(y: np.ndarray, sr: int, frame_s: float = 0.05, mask: np.ndarray
     rms = np.sqrt((frames ** 2).mean(axis=1))
     fdb = db(rms)
     times = np.arange(n) * frame_s
-    floor = float(np.percentile(fdb, 5))
+    live = fdb > -80          # ignore digital silence (exact zeros) when estimating the noise floor
+    floor = float(np.percentile(fdb[live], 5)) if live.sum() > 10 else -80.0
+    raw = fdb > floor + margin_db
+    vad = np.convolve(raw.astype(float), np.ones(3) / 3, mode="same") >= 0.5
     if mask is None:
-        # energy VAD: frames more than margin_db above the noise floor, smoothed over 3 frames
-        raw = fdb > floor + margin_db
-        mask = np.convolve(raw.astype(float), np.ones(3) / 3, mode="same") >= 0.5
+        mask = vad
     else:
         mask = mask[:n] if len(mask) >= n else np.pad(mask, (0, n - len(mask)))
+        mask = mask & (fdb > floor + margin_db / 2)     # drop silent frames inside transcript spans
+    if mask.sum() < 3:
+        mask = vad if vad.sum() >= 3 else np.ones(n, dtype=bool)
     sp = fdb[mask]
+    # dynamic range from 0.5 s peak levels (robust to quiet consonants / micro-pauses inside speech)
+    pk = int(0.5 / frame_s)
+    peaks = np.array([fdb[i: i + pk].max() for i in range(0, n - pk + 1, pk) if mask[i: i + pk].mean() >= 0.5])
+    if len(peaks) < 4:
+        peaks = sp
     minutes = int(np.ceil(times[-1] / 60)) if n else 0
     mm = []
     for m in range(minutes):
@@ -77,7 +86,7 @@ def volume_stats(y: np.ndarray, sr: int, frame_s: float = 0.05, mask: np.ndarray
         frame_times=times, frame_db=fdb, speech_mask=mask,
         mean_db=float(sp.mean()), median_db=float(np.median(sp)),
         p10_db=float(np.percentile(sp, 10)), p90_db=float(np.percentile(sp, 90)),
-        dynamic_range_db=float(np.percentile(sp, 90) - np.percentile(sp, 10)),
+        dynamic_range_db=float(np.percentile(peaks, 90) - np.percentile(peaks, 10)),
         std_db=float(sp.std()), peak_dbfs=float(db(np.abs(y).max())),
         clipped_pct=float((np.abs(y) >= 0.99).mean() * 100),
         minute_means=mm, drift_db_per_min=drift,
@@ -169,7 +178,8 @@ class PauseStats:
     pauses_per_min: float
 
 
-def pause_stats(vol: VolumeStats, min_pause: float = 0.3, frame_s: float = 0.05) -> PauseStats:
+def pause_stats(vol: VolumeStats, min_pause: float = 0.3, frame_s: float = 0.05,
+                within: list[tuple[float, float]] | None = None) -> PauseStats:
     mask = vol.speech_mask
     total = float(len(mask) * frame_s)
     pauses: list[tuple[float, float]] = []
@@ -185,6 +195,10 @@ def pause_stats(vol: VolumeStats, min_pause: float = 0.3, frame_s: float = 0.05)
         pauses.append(((len(mask) - run) * frame_s, run * frame_s))
     # ignore leading/trailing silence for pause time
     inner = [p for p in pauses if p[0] > 0.5 and p[0] + p[1] < total - 0.5]
+    if within is not None:
+        # only pauses that fall entirely inside one of this speaker's turns
+        inner = [p for p in inner if any(a - 0.05 <= p[0] and p[0] + p[1] <= b + 0.05 for a, b in within)]
+        total = sum(b - a for a, b in within) or total
     pt = sum(d for _, d in inner)
     speech = float(mask.sum() * frame_s)
     return PauseStats(
