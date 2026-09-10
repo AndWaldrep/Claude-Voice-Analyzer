@@ -1,10 +1,16 @@
 # Claude Voice Analyzer
 
 Offline speech analysis for coaches: **who spoke, what they said, and how they said it**.
-Point it at any recording (m4a, mp3, wav, ogg, …) of one person or a whole meeting and it
-produces a coaching report per speaker covering volume, pitch & intonation, pace & pauses,
-enunciation, fluency, and emotional undertone – with a speaker-labelled transcript.
+Point it at any recording (m4a, mp3, wav, ogg, …) of one person or a whole meeting and it produces a
+coaching report per speaker covering volume, pitch, pace, pauses, enunciation, fluency, emotional
+undertone, and rhetorical composition – with a speaker-labelled transcript, and every number
+benchmarked against a measured corpus of recognized speakers.
 Everything runs locally on CPU; no audio leaves the machine.
+
+The thresholds are not invented. They come from running this same pipeline over thirteen speeches by
+Brené Brown, Simon Sinek, Chimamanda Ngozi Adichie, Ken Robinson, Kennedy and others; see
+[docs/BENCHMARKS.md](docs/BENCHMARKS.md). The reasoning behind what gets measured, from Aristotle
+and Cicero through to modern practice, is in [docs/ORATORY.md](docs/ORATORY.md).
 
 ## What it measures
 
@@ -18,7 +24,13 @@ Everything runs locally on CPU; no audio leaves the machine.
 | Enunciation | consonant (2–8 kHz) energy, high-band balance, recognizer word confidence, least-intelligible words with timestamps, rushed long words |
 | Fluency | filler words (um / uh / you know / like / so …), immediate repeats, sentence length, most-used words |
 | Tone | per-turn arousal (energy + pitch + rate vs. the speaker's own baseline), expressiveness, rising/falling final contour (tentative vs. assertive), hesitancy; notable moments with what was said; optional categorical model (neutral / angry / happy / sad, experimental) |
-| Coaching | prioritised, rule-based suggestions per speaker derived from the numbers |
+| Pause *use* | every pause classified as rhetorical (after a full stop), grammatical (at a comma) or hesitation (mid-clause), plus long breaks. The rhetorical share is the single most discriminating metric in the tool: every great speaker measured sits above 57%, median 68% |
+| Rhetoric | anaphora, epistrophe, tricolon, antithesis, chiasmus, rhetorical questions, with the actual quoted text; figure density per 1000 words |
+| Language | concrete-and-sensory vs. abstract vocabulary, Anglo-Saxon vs. Latinate register, sentence-length contrast, short punch sentences, direct address (you / we / I), narrative cues, metaphor cues, the repeated throughline phrase, signposting |
+| Structure | whether the talk opens with a story, a question or a number; whether it closes with a call to action; whether the ending echoes the opening (ring composition) |
+| Audience | laughter and applause detected acoustically (Whisper's VAD strips them from the transcript), with timestamps – the only direct evidence that the room reacted |
+| Benchmark | every headline metric as a percentile against the corpus of recognized speakers |
+| Coaching | prioritised, rule-based suggestions per speaker, covering both delivery and composition |
 
 Output: `reports/<name>.md` (report + speaker-labelled transcript) and `reports/<name>.json` (every metric).
 
@@ -34,10 +46,15 @@ Output: `reports/<name>.md` (report + speaker-labelled transcript) and `reports/
 4. **Per-speaker acoustics** with Praat (via parselmouth) and numpy/scipy on that speaker's frames only.
 5. **Tone** from prosody relative to each speaker's own baseline (z-scores), so a normally quiet
    person getting louder reads as animated even if still quieter than the room.
-6. **Report** with thresholds from public-speaking practice and coaching rules.
+6. **Rhetoric** from the transcript: figures, language texture and structure, plus pause use
+   classified by where each pause falls in the sentence.
+7. **Audience reactions** detected acoustically — energetic stretches carrying no transcribed words
+   that are broader-band and brighter than the speaker's voice.
+8. **Report** with thresholds measured from the benchmark corpus, not from conventional advice.
 
-Validated on a 3-reader LibriSpeech mix (all 11 turns and 3 speakers recovered exactly) and a
-14-minute single-speaker phone recording (correctly reported as one speaker).
+Validated on a 3-reader LibriSpeech mix (all 11 turns and 3 speakers recovered exactly), a
+14-minute single-speaker phone recording (correctly reported as one speaker), and the benchmark
+corpus, where audience detection independently recovered Ken Robinson's actual laugh lines.
 
 ## Install
 
@@ -84,6 +101,8 @@ voice_analyzer/
   features.py      volume, pitch (Praat), pauses, spectral clarity, phrase endings
   text_metrics.py  pace, fillers, repetitions, enunciation proxies
   tone.py          prosodic emotional-undertone indicators (+ optional categorical model)
+  rhetoric.py      figures, language texture, structure, pause classification, audience response
+  benchmarks.py    measured percentiles from the corpus of recognized speakers
   report.py        markdown + JSON report and coaching rules
   cli.py           command line
 tests/             unit tests on synthetic audio / embeddings (python -m pytest), no downloads
@@ -100,3 +119,7 @@ tests/             unit tests on synthetic audio / embeddings (python -m pytest)
   (energised, flat, tentative, assertive, hesitant) – not inner emotional state. The optional categorical
   model was trained on acted speech and is poorly calibrated on real conversation; treat it as a hint.
 * Diarization is embedding-based without overlap handling: two people talking at once get one label.
+* Rhetorical figures are found by pattern matching, not by understanding. Counts are dependable;
+  a metaphor that uses no cue word will be missed, and the metaphor metric in particular is weak.
+* The benchmark corpus is thirteen speeches, twelve of them TED talks, and contains only successful
+  ones. It describes what good speakers do; it cannot tell you what separates good from bad.

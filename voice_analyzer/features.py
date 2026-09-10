@@ -239,6 +239,43 @@ def clarity_stats(y: np.ndarray, sr: int, mask: np.ndarray, frame_s: float = 0.0
     )
 
 
+# --------------------------------------------------------------------------- audience response
+def detect_audience(y: np.ndarray, sr: int, word_mask: np.ndarray, vol: VolumeStats,
+                    frame_s: float = 0.05, min_dur: float = 0.8,
+                    flat_thr: float = 0.07, centroid_thr: float = 2100.0) -> list[tuple[float, float, str]]:
+    """Find audience reactions acoustically: energetic stretches that carry no transcribed words and
+    are noticeably broader-band and brighter than this speaker's voice.
+
+    Whisper's voice-activity filter strips laughter and applause before the model sees them, so text
+    markers alone miss almost all of it. Applause is near-white noise; laughter is a rougher, brighter
+    signal than speech. Both sit well above speech in spectral flatness and centroid.
+
+    Returns (start, duration, kind) with kind in {"applause", "laughter"} -- the split between the two
+    is by duration and flatness and is approximate; the detection itself is the reliable part.
+    """
+    import librosa
+
+    hop = int(sr * frame_s)
+    n = min(len(word_mask), len(vol.speech_mask), len(y) // hop)
+    cand = vol.speech_mask[:n] & ~word_mask[:n]
+    flat = librosa.feature.spectral_flatness(y=y, n_fft=1024, hop_length=hop)[0]
+    cent = librosa.feature.spectral_centroid(y=y, sr=sr, n_fft=1024, hop_length=hop)[0]
+    out: list[tuple[float, float, str]] = []
+    run = 0
+    for i in range(n + 1):
+        if i < n and cand[i]:
+            run += 1
+            continue
+        if run * frame_s >= min_dur:
+            a, b = i - run, i
+            f, c = float(flat[a:b].mean()), float(cent[a:b].mean())
+            if f > flat_thr and c > centroid_thr:
+                dur = run * frame_s
+                out.append((a * frame_s, dur, "applause" if (dur > 3.0 or f > 0.11) else "laughter"))
+        run = 0
+    return out
+
+
 # --------------------------------------------------------------------------- phrase endings
 def trailing_off(vol: VolumeStats, pauses: PauseStats, window_s: float = 0.6, frame_s: float = 0.05) -> dict:
     """Compare loudness in the last `window_s` of each phrase to the phrase's middle.

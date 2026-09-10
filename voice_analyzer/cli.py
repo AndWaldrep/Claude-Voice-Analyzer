@@ -15,8 +15,9 @@ from . import audio, features, report
 FRAME_S = 0.05
 
 
-def speaker_metrics(y, sr, mask, words, total_s, pitch_floor, pitch_ceiling, spans=None):
-    from . import text_metrics
+def speaker_metrics(y, sr, mask, words, total_s, pitch_floor, pitch_ceiling, spans=None, segments=None,
+                    acoustic_audience=None):
+    from . import rhetoric, text_metrics
     from .transcribe import Transcript
 
     vol = features.volume_stats(y, sr, mask=mask)
@@ -30,6 +31,8 @@ def speaker_metrics(y, sr, mask, words, total_s, pitch_floor, pitch_ceiling, spa
         m["pace"] = text_metrics.pace_stats(tr, pau.total_time_s, pau.speech_time_s)
         m["fluency"] = text_metrics.fluency_stats(tr, pau.total_time_s)
         m["enunciation"] = text_metrics.enunciation_stats(tr)
+        m["rhetoric"] = rhetoric.analyze(tr.text, segments=segments, total_s=total_s, words=words,
+                                         acoustic_audience=acoustic_audience)
     return m
 
 
@@ -95,16 +98,30 @@ def main(argv=None) -> int:
 
         emo = tone.load_categorical() if a.emotion_model else None
         interaction = diarize.interaction_stats(dia, total_s, speech_mask=vad, frame_s=FRAME_S)
+        solo_audience = None
+        if len(dia.speakers) == 1:
+            wmask = features.speech_mask_from_words(tr.words, n_frames, FRAME_S)
+            solo_audience = features.detect_audience(y, sr, wmask, features.volume_stats(y, sr))
+            if solo_audience:
+                log(f"detected {len(solo_audience)} audience reactions")
         for spk in dia.speakers:
             mask = diarize.speaker_mask(dia, spk, n_frames, FRAME_S)
             spans = diarize.speaker_spans(dia, spk)
-            m = speaker_metrics(y, sr, mask, dia.words_for(spk), total_s, a.pitch_floor, a.pitch_ceiling, spans)
+            segs = tr.segments if len(dia.speakers) == 1 else None
+            m = speaker_metrics(y, sr, mask, dia.words_for(spk), total_s, a.pitch_floor, a.pitch_ceiling, spans, segs,
+                                acoustic_audience=solo_audience)
             st = tone.analyze_speaker_tone(spk, dia.turns_for(spk), m["volume"], m["pitch"], y=y, sr=sr, categorical_model=emo)
             speakers.append({"name": spk, "metrics": m, "tone": st})
         log("per-speaker metrics + tone done")
     else:
         mask = features.speech_mask_from_words(tr.words, n_frames, FRAME_S) if tr and tr.words else None
-        m = speaker_metrics(y, sr, mask, tr.words if tr else None, total_s, a.pitch_floor, a.pitch_ceiling)
+        aud = None
+        if tr and tr.words and mask is not None:
+            aud = features.detect_audience(y, sr, mask, features.volume_stats(y, sr))
+            if aud:
+                log(f"detected {len(aud)} audience reactions")
+        m = speaker_metrics(y, sr, mask, tr.words if tr else None, total_s, a.pitch_floor, a.pitch_ceiling,
+                            segments=tr.segments if tr else None, acoustic_audience=aud)
         speakers.append({"name": "Speaker 1", "metrics": m, "tone": None})
         log("acoustic features done")
 
