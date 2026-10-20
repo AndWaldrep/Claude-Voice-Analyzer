@@ -440,7 +440,10 @@ export function classifyPauses(pauseList, align, script, opts = {}) {
   // to a skipped line without letting a stall in open text be credited as a landed pause.
   // Every one of these was settled by measuring failures rather than chosen by taste.
   //   maxDrift  how far the alignment may stretch to re-synchronise after a stumble
-  //   stopTol   how close a pause must then sit to its full stop to count as landing there
+  //   stopTol   how far the stretch of speech since the last landed pause may differ from what
+  //             the text says before the pause stops counting as landed
+  //   resyncTol  how far it may differ before the alignment stops believing its own match and
+  //             declines to take its bearings from it
   //   scaleSpan how far the syllable-to-text ratio may be nudged, and offSpan how far the whole
   //             reading may slide. Both are nearly nailed shut, and that is the point. Given real
   //             freedom the alignment stops measuring and starts explaining: it will find the
@@ -448,8 +451,8 @@ export function classifyPauses(pauseList, align, script, opts = {}) {
   //             rest, so a reading paused entirely mid-clause scored 43%. Nailed down it scores 0,
   //             which is the truth. The detector earns this: it counts syllables to within 5%
   //             across every rate a person speaks at, so the ratio is already known.
-  const { midCost = 6, maxDrift = 30, stopTol = 2.5, commaTol = 2.5,
-          scaleSpan = 0.02, offSpan = 1 } = opts;
+  const { midCost = 6, maxDrift = 30, stopTol = 3.5, commaTol = 2.5,
+          scaleSpan = 0.02, offSpan = 1, resyncTol = 4 } = opts;
   const stopsAt = (script.boundaries || []).filter(b => b > 0);
   if (stopsAt.length < 2) return null;
 
@@ -524,10 +527,24 @@ export function classifyPauses(pauseList, align, script, opts = {}) {
   let stop = 0, clause = 0, mid = 0, residual = 0, nMatched = 0;
   let drift = 0, nDrift = 0;
   const midExamples = [];
+  // A pause counts as landing on a full stop when the stretch of speech since the previous landed
+  // pause is the length the text says it should be. Judging it by absolute position instead looks
+  // equivalent and is not: a speaker who misses one word early is two syllables adrift for the
+  // rest of the passage, so every later pause fails a position test however perfectly it lands.
+  // Missing four syllables in 221, under two percent, took a flawless reading from 100% to 50%.
+  // Measuring the gap between pauses makes small, ordinary departures from the text local.
+  let prevObs = 0, prevAnc = 0;
   for (let i = 0; i < m; i++) {
-    if (fit.matched[i] >= 0) { drift += Math.abs(fit.obs[i] - fit.matched[i]); nDrift++; }
-    if (fit.matched[i] >= 0 && Math.abs(fit.obs[i] - fit.matched[i]) <= stopTol) {
-      stop++; residual += Math.abs(fit.obs[i] - fit.matched[i]); nMatched++;
+    const a = fit.matched[i];
+    const gapMismatch = a >= 0 ? Math.abs((fit.obs[i] - prevObs) - (a - prevAnc)) : Infinity;
+    if (a >= 0) { drift += gapMismatch; nDrift++; }
+    // Re-synchronise on every pause the alignment matched, whether or not the gap was close
+    // enough to count. The alignment is the reader's position in the text; the tolerance only
+    // decides what to report. Resyncing solely on accepted pauses makes one rephrased clause
+    // reject every pause that follows it.
+    if (a >= 0 && gapMismatch <= resyncTol) { prevObs = fit.obs[i]; prevAnc = a; }
+    if (gapMismatch <= stopTol) {
+      stop++; residual += gapMismatch; nMatched++;
       continue;
     }
     const pos = fit.obs[i];

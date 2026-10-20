@@ -74,6 +74,58 @@ await deviating("ad-libs a short opener", { extra: 12 }, "extra");
 await deviating("ad-libs a long opener", { extra: 30 }, "extra");
 report("a reader who departs from the page");
 
+/* Nobody reads a passage word for word. They miss a word, swap one, rephrase a clause. None of
+   that should move the measurement, and before this was fixed it moved it enormously: dropping
+   four syllables out of 221, under two percent, took a flawless reading from 100% to 50%. */
+function readNatural(n, delta, seed = 1) {
+  const parts = [];
+  let s = seed;
+  const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const touched = new Set();
+  while (touched.size < Math.min(n, script.sentenceList.length)) {
+    touched.add(Math.floor(rnd() * script.sentenceList.length));
+  }
+  script.sentenceList.forEach((sent, i) => {
+    parts.push(syllableTrain(120, Math.max(3, sent.syllables + (touched.has(i) ? delta : 0)), 0.22, SR));
+    parts.push(noise(0.9, SR, 0.0005));
+  });
+  return DSP.highpass(concat(parts), SR);
+}
+
+for (const [n, delta, what] of [
+  [1, -2, "misses a word"], [3, -2, "misses a word in three sentences"],
+  [5, -2, "misses a word in five"], [9, -2, "misses a word in every sentence"],
+  [4, -4, "drops a few words in four sentences"], [9, -4, "drops a few words throughout"],
+  [1, 2, "adds a word"], [3, 2, "adds a word in three sentences"],
+  [5, 2, "adds a word in five"], [3, 4, "rephrases three clauses longer"],
+]) {
+  const r = await DSP.analyse(readNatural(n, delta), SR, script);
+  near(`${what} (${n > 0 ? n * delta : 0} syllables)`, r.placement.atFullStopPct, 100, 13, "%");
+}
+report("a reader who is human about it");
+
+/* A reader who pauses the same short distance before every full stop has gaps that match the text
+   perfectly, so matching on gaps alone would accept them. They are not landing their pauses. */
+{
+  const build = points => {
+    const parts = [];
+    let spoken = 0;
+    for (const p of points) {
+      const need = p - spoken;
+      if (need > 0) { parts.push(syllableTrain(120, need, 0.22, SR)); spoken = p; }
+      parts.push(noise(0.9, SR, 0.0005));
+    }
+    const tail = script.syllables - spoken;
+    if (tail > 0) parts.push(syllableTrain(120, tail, 0.22, SR));
+    return DSP.highpass(concat(parts), SR);
+  };
+  for (const early of [5, 7]) {
+    const r = await DSP.analyse(build(script.boundaries.map(b => Math.max(3, b - early))), SR, script);
+    near(`stopping ${early} syllables short of every full stop`, r.placement.atFullStopPct, 0, 5, "%");
+  }
+  report("a reader who stops just short, every time");
+}
+
 // the alignment must not be free enough to explain anything it is shown
 {
   const x = read({ mid: true });

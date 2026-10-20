@@ -237,14 +237,19 @@ function renderResults(r) {
   /* ---- where the pauses landed: the single most discriminating thing measured ---- */
   if (r.placement && r.placementTrusted) {
     const pl = r.placement;
+    // This note fires on length, not on where the pauses fell, so it can appear on a reading that
+    // was measured perfectly well. It says what was observed rather than claiming the figure is
+    // wrong, because missing a few words does not move the figure while skipping a whole sentence
+    // does, and the difference between those two is not visible from here.
+    const pctSyl = Math.round(r.completeness * 100);
     const caveat = r.placementCaveat === "incomplete"
-      ? `You produced about ${Math.round(r.completeness * 100)}% of the passage's syllables, so some
-         of it may not have been read. Positions below are worked out by counting syllables against
-         the text, so anything left out shifts them and the split is then only a guess.`
+      ? `You spoke about ${pctSyl}% of the passage's syllables. Missing the odd word does not
+         affect the figures above, but if you skipped a whole line the positions will be out, since
+         they are worked out by counting syllables against the text.`
       : r.placementCaveat === "extra"
-      ? `You produced about ${Math.round(r.completeness * 100)}% of the passage's syllables, so
-         something was repeated or added. Positions below are worked out by counting syllables
-         against the text, so the extra words shift them and the split is then only a guess.`
+      ? `You spoke about ${pctSyl}% of the passage's syllables, so something was added or repeated.
+         A rephrased clause does not affect the figures above, but a repeated sentence will, since
+         the positions are worked out by counting syllables against the text.`
       : "";
     const bar = (n, cls) => `<span class="seg ${cls}" style="flex:${Math.max(n, 0.0001)}"></span>`;
     html += `<div class="block">

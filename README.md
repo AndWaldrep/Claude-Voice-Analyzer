@@ -78,13 +78,24 @@ as after a full stop, at a comma, or mid-clause. Across the thirteen recorded sp
 benchmark corpus, at least 57% of pauses landed after a full stop and the median was 68%. The same
 silence reads as command after a full stop and as hunting for a word inside a clause.
 
-That measurement is only honest if it knows when it cannot be made. A reader who skips a line
-shifts every later position by whatever they left out, and no amount of arithmetic recovers that
-without knowing what was actually said. So the app counts the syllables you produced against the
-syllables the passage contains, and when the two disagree it says the placement is a guess rather
-than reporting a number. Readings that follow the page are measured exactly; readings that wander
-are flagged. The one case it must never get wrong is a reader who follows the text but never lands
-a pause, because that is the finding worth having, and it is reported rather than explained away.
+Nobody reads a passage word for word, so the measurement does not require it. Whether a pause
+landed is judged by the stretch of speech since the last landed pause, not by absolute position in
+the text. That distinction matters more than it sounds: judged by position, a speaker who misses
+one word early is two syllables adrift for the rest of the passage and every later pause fails,
+however perfectly it lands. Four syllables missed out of 221 took a flawless reading from 100% to
+50%. Measured by the gap instead, a reader can miss a word in every sentence, or rephrase clauses
+several syllables longer, and still be measured at 100%.
+
+Two things it must still get right. A reader who follows the text but never lands a pause is the
+finding worth having, and is reported rather than explained away. A reader who stops the same short
+distance before every full stop has gaps that match the text perfectly, and is not landing their
+pauses either; both read zero, and there are tests holding them there.
+
+What it cannot do is follow someone who skips a whole line, because that shifts every later
+position by whatever was left out and only a transcript could tell that from odd pausing. The app
+counts the syllables spoken against the syllables in the passage and says what it saw when the two
+disagree, without claiming the figure is wrong, since missing a few words does not move it while
+skipping a sentence does.
 
 Beyond the score there is a deeper reading: harmonics-to-noise ratio (Boersma's formulation, from
 the autocorrelation peak), pitch and loudness steadiness, consonant energy in the 2 to 8 kHz band,
@@ -123,7 +134,7 @@ docs/
   sw.js         offline cache, so practice works without a signal
 web-tests/
   dsp.test.mjs          109 checks against signals with known answers
-  robustness.test.mjs    19 checks on imperfect readers: skipped lines, repeats, ad-libs
+  robustness.test.mjs    31 checks on imperfect readers: missed words, rephrasings, skipped lines
   live.test.mjs          36 checks driving the real microphone path in Chromium
 ```
 
@@ -133,8 +144,9 @@ permission, worklet capture, sample buffer, analysis and the rendered score.
 
 Pause placement is tested by building audio that reads the real passage and pauses only at its full
 stops, which must score 100%, and again pausing only inside sentences, which must score zero. The
-robustness suite then reads it badly on purpose, and every parameter in the alignment was set by
-measuring those failures rather than chosen by taste. Giving the alignment a free scale lets it
+robustness suite then reads it the way people actually read: missing words, adding them, rephrasing
+clauses, stopping just short of the full stop. Every parameter in the alignment was set by measuring
+those failures rather than chosen by taste. Giving the alignment a free scale lets it
 explain any sequence of pauses at all: the same wholly mid-clause reading scores 36% loosened and
 0% nailed down, and there is a test that holds it to that.
 
