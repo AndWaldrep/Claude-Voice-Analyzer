@@ -1,5 +1,6 @@
 import { MODES, METRICS, scriptStats, sentencesOf } from "./modes.js";
 import * as DSP from "./dsp.js";
+import * as BENCH from "./benchmarks.js";
 import { Recorder, toWav, decodeFile } from "./capture.js";
 
 const $ = id => document.getElementById(id);
@@ -231,7 +232,96 @@ function renderResults(r) {
              : `<p class="mnote">Target ${band[0].toFixed(x.dec)}&ndash;${band[1].toFixed(x.dec)}${x.unit}.</p>`}
     </div>`;
   }
-  html += `</div>
+  html += `</div>`;
+
+  /* ---- where the pauses landed: the single most discriminating thing measured ---- */
+  if (r.placement) {
+    const pl = r.placement;
+    const bar = (n, cls) => `<span class="seg ${cls}" style="flex:${Math.max(n, 0.0001)}"></span>`;
+    html += `<div class="block">
+      <h3>Where your pauses landed</h3>
+      <div class="segbar" role="img" aria-label="${pl.atFullStop} after a full stop, ${pl.atClause} at a comma, ${pl.midClause} mid-clause">
+        ${bar(pl.atFullStop, "good")}${bar(pl.atClause, "mid")}${bar(pl.midClause, "bad")}
+      </div>
+      <div class="seglegend">
+        <span><i class="good"></i>${pl.atFullStop} after a full stop</span>
+        <span><i class="mid"></i>${pl.atClause} at a comma</span>
+        <span><i class="bad"></i>${pl.midClause} mid-clause</span>
+      </div>
+      <p class="mnote">${pl.atFullStopPct.toFixed(0)}% landed after a full stop. Every speaker in the
+        benchmark corpus sat above 57%, median 68%. The same silence reads as command after a full
+        stop and as hunting for a word inside a clause.
+        ${pl.longestMid.length ? "Longest mid-clause stops: " + pl.longestMid.map(m =>
+          `${m.dur.toFixed(1)}s around syllable ${Math.round(m.syllable)}`).join(", ") + "." : ""}</p>
+    </div>`;
+  }
+
+  /* ---- against the corpus ---- */
+  const benchRows = Object.keys(BENCH.PERCENTILES).filter(k => isFinite(r[k]));
+  if (benchRows.length) {
+    html += `<div class="block"><h3>Against ${BENCH.CORPUS_SIZE} recorded speeches</h3>
+      <table class="bench"><tbody>`;
+    for (const k of benchRows) {
+      const { p, verdict } = BENCH.compare(k, r[k]);
+      const pts = BENCH.PERCENTILES[k];
+      html += `<tr><td>${BENCH.LABELS[k]}</td>
+        <td class="num">${r[k].toFixed(k === "plen" ? 2 : 1)}</td>
+        <td class="num dim">${pts[0].toFixed(1)}&ndash;${pts[4].toFixed(1)}</td>
+        <td><span class="pbar"><i style="width:${Math.max(2, p)}%"></i></span></td>
+        <td class="dim">p${p.toFixed(0)} ${verdict}</td></tr>`;
+    }
+    html += `</tbody></table>
+      <p class="mnote">The corpus disagrees with itself on nearly everything, so read a low
+        percentile as a question rather than a verdict.</p></div>`;
+  }
+
+  /* ---- deeper reading ---- */
+  const e = r.endings;
+  const q = [];
+  if (isFinite(r.hnr)) q.push(["Harmonics to noise", r.hnr.toFixed(1) + " dB",
+    r.balance < -12 ? "not reliable on this recording" : r.hnr > 15 ? "clean and steady" : r.hnr > 10 ? "slightly breathy or a noisy room" : "breathy, hoarse, or a lot of room noise"]);
+  if (isFinite(r.pitchSteadiness)) q.push(["Pitch steadiness", r.pitchSteadiness.toFixed(1) + "%",
+    r.pitchSteadiness < 3 ? "steady" : r.pitchSteadiness < 6 ? "some wobble" : "unsteady, often strain or nerves"]);
+  if (isFinite(r.levelSteadiness)) q.push(["Loudness steadiness", r.levelSteadiness.toFixed(1) + "%",
+    r.levelSteadiness < 12 ? "even" : "uneven from syllable to syllable"]);
+  if (isFinite(r.consonant)) q.push(["Consonant energy", r.consonant.toFixed(1) + "%",
+    r.consonant > 3 ? "crisp" : "soft consonants, the first sign of mumbling"]);
+  if (isFinite(r.rhythm)) q.push(["Rhythm variability", r.rhythm.toFixed(0),
+    r.rhythm < 25 ? "close to a metronome" : r.rhythm > 75 ? "lurching" : "natural English rhythm"]);
+  if (isFinite(r.levelDrift)) q.push(["Loudness drift", (r.levelDrift >= 0 ? "+" : "") + r.levelDrift.toFixed(1) + " dB/min",
+    r.levelDrift < -1.5 ? "fading as you go, usually breath or conviction" : "holding level"]);
+  if (e && isFinite(e.meanDropDb)) q.push(["Phrase endings", e.meanDropDb.toFixed(1) + " dB drop",
+    `${e.fadingPct.toFixed(0)}% of phrases trail off by more than 4 dB`]);
+  if (e && isFinite(e.risingPct)) q.push(["Final pitch", `${e.risingPct.toFixed(0)}% rising, ${e.fallingPct.toFixed(0)}% falling`,
+    e.risingPct > 40 ? "rising endings on statements read as asking permission" : "endings mostly land"]);
+  if (e && isFinite(e.meanPhraseS)) q.push(["Phrase length", e.meanPhraseS.toFixed(1) + " s mean",
+    `${e.nPhrases} phrases, longest ${e.longestPhraseS.toFixed(1)} s`]);
+
+  if (q.length) {
+    html += `<details open><summary>Deeper reading</summary><table class="deep"><tbody>` +
+      q.map(([a, b, c]) => `<tr><td>${a}</td><td class="num">${b}</td><td class="dim">${c}</td></tr>`).join("") +
+      `</tbody></table></details>`;
+  }
+
+  /* ---- sentence by sentence ---- */
+  if (r.sentences && r.sentences.length) {
+    const rates = r.sentences.map(s => s.rate).filter(isFinite);
+    const mean = rates.reduce((a, b) => a + b, 0) / Math.max(1, rates.length);
+    html += `<details><summary>Sentence by sentence</summary>
+      <p class="mnote">Rate and level per sentence, placed by matching the syllables you produced
+        against the syllables in the text. Positions are approximate.</p>
+      <div style="overflow-x:auto"><table class="deep sent"><thead><tr>
+        <th>At</th><th>Sentence</th><th>Syll/s</th><th>Level</th></tr></thead><tbody>` +
+      r.sentences.map(s => {
+        const fast = s.rate > mean * 1.18, slow = s.rate < mean * 0.82;
+        return `<tr><td class="num dim">${clock(s.from)}</td>
+          <td class="stext">${s.text.length > 64 ? s.text.slice(0, 61) + "\u2026" : s.text}</td>
+          <td class="num ${fast ? "hot" : slow ? "cool" : ""}">${isFinite(s.rate) ? s.rate.toFixed(1) : "\u2014"}</td>
+          <td class="num dim">${isFinite(s.level) ? s.level.toFixed(0) : "\u2014"}</td></tr>`;
+      }).join("") + `</tbody></table></div></details>`;
+  }
+
+  html += `
     <div class="chartwrap"><h3>Loudness and silence</h3><canvas id="cvL" height="92"></canvas></div>
     <div class="chartwrap"><h3>Pitch contour</h3><canvas id="cvP" height="92"></canvas></div>
     <details><summary>What was measured</summary><ul>

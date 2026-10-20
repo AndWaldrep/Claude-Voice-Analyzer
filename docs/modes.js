@@ -16,7 +16,7 @@ export const MODES = {
     tag: "Rouse a room that may not want to move",
     cite: "William Shakespeare, <em>Henry V</em>, Act IV scene iii, 1599. Public domain.",
     focus: ["pitch", "dyn"],
-    bands: { wpm: [108, 145], artic: [3.9, 5.0], pitch: [12, 18], dyn: [8, 15], ppm: [12, 20], plen: [0.9, 2.0], mono: [0, 15] },
+    bands: { wpm: [108, 145], artic: [3.9, 5.0], pitch: [12, 18], dyn: [8, 15], ppm: [12, 20], plen: [0.9, 2.0], stops: [60, 90], mono: [0, 15] },
     text: `This day is call'd the feast of Crispian. He that outlives this day, and comes safe home, will stand a tip-toe when this day is nam'd, and rouse him at the name of Crispian.
 He that shall live this day, and see old age, will yearly on the vigil feast his neighbours, and say "To-morrow is Saint Crispian." Then will he strip his sleeve and show his scars, and say "These wounds I had on Crispin's day."
 Old men forget; yet all shall be forgot, but he'll remember, with advantages, what feats he did that day. Then shall our names, familiar in his mouth as household words, be in their flowing cups freshly rememb'red.
@@ -28,7 +28,7 @@ For he to-day that sheds his blood with me shall be my brother; be he ne'er so v
     tag: "Mark an occasion with gravity, not volume",
     cite: "Abraham Lincoln, Address at Gettysburg, 19 November 1863. Public domain.",
     focus: ["plen", "wpm"],
-    bands: { wpm: [95, 125], artic: [3.5, 4.6], pitch: [7, 12], dyn: [5, 10], ppm: [14, 22], plen: [1.0, 2.2], mono: [0, 25] },
+    bands: { wpm: [95, 125], artic: [3.5, 4.6], pitch: [7, 12], dyn: [5, 10], ppm: [14, 22], plen: [1.0, 2.2], stops: [65, 92], mono: [0, 25] },
     text: `Four score and seven years ago our fathers brought forth on this continent a new nation, conceived in liberty, and dedicated to the proposition that all men are created equal.
 Now we are engaged in a great civil war, testing whether that nation, or any nation so conceived and so dedicated, can long endure. We are met on a great battlefield of that war. We have come to dedicate a portion of that field as a final resting place for those who here gave their lives that that nation might live. It is altogether fitting and proper that we should do this.
 But in a larger sense, we cannot dedicate, we cannot consecrate, we cannot hallow this ground. The brave men, living and dead, who struggled here have consecrated it far above our poor power to add or detract. The world will little note, nor long remember, what we say here, but it can never forget what they did here.
@@ -39,7 +39,7 @@ It is for us the living, rather, to be dedicated here to the unfinished work whi
     tag: "Land a decision with busy people",
     cite: "Written for this exercise in the product-briefing register. No famous briefing is out of copyright, so this stands in for one.",
     focus: ["artic", "plen"],
-    bands: { wpm: [140, 175], artic: [4.7, 5.7], pitch: [9, 14], dyn: [5, 11], ppm: [12, 18], plen: [0.6, 1.3], mono: [0, 20] },
+    bands: { wpm: [140, 175], artic: [4.7, 5.7], pitch: [9, 14], dyn: [5, 11], ppm: [12, 18], plen: [0.6, 1.3], stops: [55, 85], mono: [0, 20] },
     text: `Three numbers matter this quarter, and only three. Renewal sits at sixty-eight percent. Support cost per account has climbed for five straight months. New revenue is flat.
 Those three are the same problem wearing different clothes. Customers who struggle in the first thirty days renew at half the rate of customers who do not, and every one of them calls support twice as often. We have been treating the symptom at the end and ignoring the cause at the start.
 So here is what we are asking for. Move four engineers onto onboarding for one quarter. Not a redesign. A single guided path that gets an account to its first useful result inside a week.
@@ -51,7 +51,7 @@ That is the decision in front of you. One quarter, four people, one number to wa
     tag: "Warm, brief, and about them",
     cite: "Written for this exercise. Toasts have no public-domain canon, so this is a model in the right register.",
     focus: ["pitch", "plen"],
-    bands: { wpm: [132, 170], artic: [4.4, 5.5], pitch: [10, 16], dyn: [5, 12], ppm: [10, 18], plen: [0.6, 1.5], mono: [0, 18] },
+    bands: { wpm: [132, 170], artic: [4.4, 5.5], pitch: [10, 16], dyn: [5, 12], ppm: [10, 18], plen: [0.6, 1.5], stops: [55, 85], mono: [0, 18] },
     text: `I have known Daniel since we were nineteen and sharing a flat with a broken radiator. He used to wear a coat indoors and insist it was fine. That is the man. Uncomplaining to a fault, and quietly certain that things will work out.
 I met Priya four years later, in a kitchen, at the end of a party nobody wanted to leave. She asked me two questions about myself and then remembered both answers a year afterwards. I understood the appeal immediately.
 Here is the thing I did not expect. Daniel got funnier. Not louder. Funnier. He started finishing the thought instead of letting it go. I have watched him become more himself, not less, which is the only test of a marriage I know how to apply.
@@ -63,7 +63,7 @@ Please raise your glass. To Daniel and Priya.`
     tag: "Hold steady while saying something true",
     cite: "Thucydides, the Funeral Oration of Pericles, from the Crawley translation of 1874. Public domain.",
     focus: ["dyn", "plen"],
-    bands: { wpm: [88, 120], artic: [3.4, 4.5], pitch: [6, 11], dyn: [4, 9], ppm: [14, 22], plen: [1.0, 2.5], mono: [0, 30] },
+    bands: { wpm: [88, 120], artic: [3.4, 4.5], pitch: [6, 11], dyn: [4, 9], ppm: [14, 22], plen: [1.0, 2.5], stops: [65, 92], mono: [0, 30] },
     text: `So and such they were, these men, worthy of their city. We who remain behind may pray to be spared their bitterness, but must resolve to keep the same daring spirit against the foe.
 It is not the oratory of others that can measure the benefit these men have conferred. It is their deeds. For heroes have the whole earth for their tomb; and in lands far from their own, where the column with its epitaph declares it, there is enshrined in every breast a record unwritten, with no tablet to preserve it except that of the heart.
 These take as your model. Judge happiness to be the fruit of freedom, and freedom the fruit of valour, and never decline the dangers of war.
@@ -75,7 +75,7 @@ Comfort, therefore, not condolence, is what I have to offer.`
     tag: "Press a case against resistance",
     cite: "Cicero, the First Oration against Catiline, 63 BC, from the Yonge translation of 1856. Public domain.",
     focus: ["pitch", "dyn"],
-    bands: { wpm: [128, 170], artic: [4.5, 5.6], pitch: [11, 17], dyn: [8, 14], ppm: [12, 20], plen: [0.7, 1.6], mono: [0, 16] },
+    bands: { wpm: [128, 170], artic: [4.5, 5.6], pitch: [11, 17], dyn: [8, 14], ppm: [12, 20], plen: [0.7, 1.6], stops: [58, 88], mono: [0, 16] },
     text: `When, O Catiline, do you mean to cease abusing our patience? How long is that madness of yours still to mock us? When is there to be an end to that unbridled audacity of yours, swaggering about as it does now?
 Do not the nightly guards placed on the Palatine Hill move you? Do not the watches posted throughout the city? Does not the alarm of the people, and the union of all good men? Does not the precaution taken of assembling the senate in this most defensible place? Do not the looks and countenances of this venerable body here present have any effect upon you?
 Do you not feel that your plans are detected? Do you not see that your conspiracy is already arrested and rendered powerless by the knowledge which every one here possesses of it?
@@ -103,7 +103,11 @@ export const METRICS = [
     low: "Pauses are clipped. A landed pause is about a second; shorter reads as a breath.",
     high: "Pauses are long. Deliberate is good, searching is not." },
   { key: "mono", label: "Monotone stretches", unit: "%", axis: [0, 60], dec: 0,
-    low: "", high: "Long passages on one note. Mark two or three lines per page to lift or drop." }
+    low: "", high: "Long passages on one note. Mark two or three lines per page to lift or drop." },
+  { key: "stops", label: "Pauses landing after a full stop", unit: "%", axis: [0, 100], dec: 0,
+    low: "Most of your silence falls inside a clause, where it reads as hunting for the next word. "
+       + "The same silence after a full stop reads as command. Move the pause to after the point.",
+    high: "" }
 ];
 
 /* ------------------------------------------------------------------ text */
@@ -159,12 +163,32 @@ export function sentencesOf(t) {
   return out;
 }
 
-/** Words, sentences and syllables of a passage: everything pace needs without transcription. */
+/** Everything the measurement needs from the passage without transcribing anything.
+ *
+ *  Beyond the totals it records, for each sentence, how many syllables precede its full stop, and
+ *  the same for every comma. Those positions are what lets a pause be placed in the text: a reader
+ *  who has reached syllable 240 of 360 is three fifths of the way through, and the sentence that
+ *  ends at syllable 238 is the one they just finished. */
 export function scriptStats(text) {
-  const ws = words(text);
+  const flat = text.replace(/\n+/g, " ");
+  const sents = sentencesOf(flat);
+  const sentenceList = [], boundaries = [], commas = [];
+  let cum = 0;
+  for (const s of sents) {
+    const before = cum;
+    let inner = 0;
+    for (const tok of s.match(/[A-Za-z'\u2019]+|[,;:]/g) || []) {
+      if (/^[,;:]$/.test(tok)) commas.push(before + inner);
+      else inner += syllables(tok);
+    }
+    cum += inner;
+    boundaries.push(cum);
+    sentenceList.push({ text: s, syllables: inner, words: words(s).length, from: before, to: cum });
+  }
   return {
-    words: ws.length,
-    sentences: sentencesOf(text.replace(/\n+/g, " ")).length,
-    syllables: ws.reduce((a, w) => a + syllables(w), 0),
+    words: words(flat).length,
+    sentences: sents.length,
+    syllables: cum,
+    sentenceList, boundaries, commas,
   };
 }

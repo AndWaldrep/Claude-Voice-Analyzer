@@ -168,4 +168,95 @@ const SR = 16000;
   report("recording quality and refusals");
 }
 
+
+/* ---------- the deeper reading ---------- */
+{
+  const { MODES: MM, scriptStats: ss } = await import("../docs/modes.js");
+  const script = ss(MM.oratory.text);
+
+  // read the real script structure aloud, pausing where the text tells you to
+  const build = (where, { fade = 0, syllDur = 0.22, gap = 0.9 } = {}) => {
+    const marks = where === "stops" ? script.boundaries : script.boundaries.map(b => Math.max(3, b - 5));
+    const parts = []; let spoken = 0, k = 0;
+    for (const m of marks) {
+      const need = m - spoken;
+      if (need > 0) {
+        const amp = 0.3 * Math.pow(10, -(fade * k) / 20);
+        parts.push(syllableTrain(120, need, syllDur, SR, amp));
+        spoken = m;
+      }
+      parts.push(noise(gap, SR, 0.0005)); k++;
+    }
+    const tail = script.syllables - spoken;
+    if (tail > 0) parts.push(syllableTrain(120, tail, syllDur, SR, 0.3));
+    return DSP.highpass(concat(parts), SR);
+  };
+
+  const atStops = await DSP.analyse(build("stops"), SR, script);
+  const midSent = await DSP.analyse(build("mid"), SR, script);
+
+  check("alignment recovers nearly every syllable",
+    Math.abs(atStops.align.detected - atStops.align.expected) / atStops.align.expected < 0.1,
+    `${atStops.align.detected} detected of ${atStops.align.expected} in the text`);
+  near("pauses at full stops are placed there", atStops.placement.atFullStopPct, 100, 1, "%");
+  check("pauses inside sentences are not", midSent.placement.atFullStopPct < 20,
+    `${midSent.placement.atFullStopPct.toFixed(0)}% at full stops, ${midSent.placement.midClause} mid-clause`);
+  check("the mid-clause pauses are reported with their position",
+    midSent.placement.longestMid.length > 0 && isFinite(midSent.placement.longestMid[0].syllable));
+
+  check("phrases match the sentences they were built from",
+    Math.abs(atStops.endings.nPhrases - script.sentences) <= 1,
+    `${atStops.endings.nPhrases} phrases, ${script.sentences} sentences`);
+  check("one row per sentence is reported", atStops.sentences.length === script.sentences,
+    `${atStops.sentences.length} rows`);
+  check("each sentence row carries a rate and a level",
+    atStops.sentences.every(s => isFinite(s.rate) && isFinite(s.level)));
+
+  // a reading that fades 2 dB per phrase should register as fading, a steady one should not
+  const fading = await DSP.analyse(build("stops", { fade: 2 }), SR, script);
+  check("a steady reading does not read as trailing off", atStops.endings.fadingPct < 20,
+    `${atStops.endings.fadingPct.toFixed(0)}% of endings fade`);
+  check("a fading reading has negative loudness drift", fading.levelDrift < atStops.levelDrift - 1,
+    `steady ${atStops.levelDrift.toFixed(2)} dB/min vs fading ${fading.levelDrift.toFixed(2)} dB/min`);
+
+  // voice quality: a clean tone is harmonic, noise is not
+  const clean = await DSP.analyse(DSP.highpass(syllableTrain(120, 60, 0.25, SR), SR), SR, script);
+  check("a clean voice has high harmonics-to-noise", clean.hnr > 12, `${clean.hnr.toFixed(1)} dB`);
+  check("a steady pitch reads as steady", clean.pitchSteadiness < 3, `${clean.pitchSteadiness.toFixed(2)}%`);
+  const breathy = concat([syllableTrain(120, 60, 0.25, SR), noise(0.1, SR, 0)]).map((v, i, a) => v + 0.05 * Math.sin(i * 12.9898) * Math.cos(i * 0.137));
+  const br = await DSP.analyse(DSP.highpass(Float32Array.from(breathy), SR), SR, script);
+  check("added noise lowers harmonics-to-noise", br.hnr < clean.hnr,
+    `${clean.hnr.toFixed(1)} dB clean vs ${br.hnr.toFixed(1)} dB noisy`);
+
+  // rhythm: a metronomic train is regular, varied syllable lengths are not
+  const varied = [];
+  for (let i = 0; i < 60; i++) varied.push(syllableTrain(120, 1, 0.14 + 0.22 * ((i * 7) % 5) / 4, SR));
+  const rv = await DSP.analyse(DSP.highpass(concat(varied), SR), SR, script);
+  check("varied syllable lengths read as less regular than a metronome",
+    rv.rhythm > clean.rhythm, `metronome ${clean.rhythm.toFixed(0)} vs varied ${rv.rhythm.toFixed(0)}`);
+
+  check("consonant energy is measured at 16 kHz", isFinite(clean.consonant), `${clean.consonant.toFixed(2)}%`);
+  report("the deeper reading");
+}
+
+/* ---------- benchmarks ---------- */
+{
+  const B = await import("../docs/benchmarks.js");
+  for (const [m, pts] of Object.entries(B.PERCENTILES)) {
+    const ordered = pts.every((v, i) => i === 0 || v >= pts[i - 1]);
+    check(`${m}: corpus deciles are ordered`, ordered, pts.join(", "));
+    const lo = B.percentileOf(m, pts[0] * 0.5), mid = B.percentileOf(m, pts[2]), hi = B.percentileOf(m, pts[4] * 1.5);
+    check(`${m}: percentile rises with the value`, lo < mid && mid < hi,
+      `${lo?.toFixed(0)} < ${mid?.toFixed(0)} < ${hi?.toFixed(0)}`);
+  }
+  check("a median value reads as mid-range", B.compare("wpm", 153.29).verdict === "mid-range for the corpus");
+  check("a very low value reads as below the corpus", B.compare("wpm", 60).verdict === "below the whole corpus");
+  check("for monotone, high is the bad direction",
+    B.compare("mono", 50).verdict === "higher than the whole corpus");
+  check("an unknown metric is not scored", B.percentileOf("nonsense", 5) === null);
+  check("the client's 55% pause placement sits near the corpus floor",
+    B.percentileOf("atFullStopPct", 55) < 12, `p${B.percentileOf("atFullStopPct", 55)?.toFixed(0)}`);
+  report("benchmarks");
+}
+
 process.exit(finish() ? 1 : 0);

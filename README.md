@@ -62,10 +62,27 @@ corpus, where audience detection independently recovered Ken Robinson's actual l
 take live. It is plain HTML and ES modules with no build step and no dependencies, so GitHub Pages
 can serve it as-is, and an iPhone can install it to the home screen where it behaves like an app.
 
-Pick a form of speaking, read its model text aloud, and the page measures pace, articulation rate,
-pitch range, volume contrast, pauses and monotone stretches against what that form actually calls
-for. A eulogy and a battlefield exhortation want opposite things, so each form carries its own
-target bands and switching form rescores the same take.
+Pick a form of speaking, read its model text aloud, and the page measures eight scored qualities
+against what that form actually calls for: pace, articulation rate, pitch range, volume contrast,
+pauses per minute, mean pause, monotone stretches, and where in the sentence the pauses fall. A
+eulogy and a battlefield exhortation want opposite things, so each form carries its own target
+bands and switching form rescores the same take.
+
+**Where the pauses fall** is the measurement worth explaining, because it needs no transcription
+and it is the most discriminating thing in the whole project. The passage is known, so its
+syllables are known, and its sentence and comma positions are known. The syllable nuclei a reader
+produces are detected acoustically. Laying one against the other says how far through the text
+someone had got when they stopped: a reader who has produced 120 of 240 nuclei is halfway through,
+and the sentence ending at syllable 118 is the one they just finished. Every pause is then placed
+as after a full stop, at a comma, or mid-clause. Across the thirteen recorded speeches in the
+benchmark corpus, at least 57% of pauses landed after a full stop and the median was 68%. The same
+silence reads as command after a full stop and as hunting for a word inside a clause.
+
+Beyond the score there is a deeper reading: harmonics-to-noise ratio (Boersma's formulation, from
+the autocorrelation peak), pitch and loudness steadiness, consonant energy in the 2 to 8 kHz band,
+rhythm variability, loudness drift across the reading, whether phrases trail off at their ends,
+whether final pitch rises or falls, and a sentence-by-sentence table of rate and level. Every
+headline figure is also placed as a percentile against the benchmark corpus.
 
 **Turning it on:** repository Settings, then Pages, then Source "Deploy from a branch", branch
 `main` (or this feature branch), folder `/docs`. It publishes to
@@ -91,18 +108,22 @@ docs/
   index.html    page, styles, and the phone record dock
   app.js        UI, scoring, charts, history
   dsp.js        the measurement code, shared with the test suite
-  modes.js      the six forms, their model texts and target bands
+  modes.js      the six forms, their model texts, target bands and script positions
+  benchmarks.js measured percentiles from the corpus of recorded speeches
   capture.js    microphone capture to raw samples
   worklet.js    the audio worklet that taps the graph
   sw.js         offline cache, so practice works without a signal
 web-tests/
-  dsp.test.mjs   74 checks against signals with known answers
-  live.test.mjs  27 checks driving the real microphone path in Chromium
+  dsp.test.mjs   109 checks against signals with known answers
+  live.test.mjs   35 checks driving the real microphone path in Chromium
 ```
 
 Run them with `node web-tests/dsp.test.mjs` and `node web-tests/live.test.mjs`. The live test feeds
 Chromium a synthetic voice of known pitch as its microphone, so the whole chain is exercised:
 permission, worklet capture, sample buffer, analysis and the rendered score.
+
+Pause placement is tested by building audio that reads the real script and pauses only at its full
+stops, which must score 100%, and again pausing only inside sentences, which must score near zero.
 
 (`docs/package.json` exists only so Node treats the `.js` files there as ES modules when the tests
 import them. It is not a package and has no dependencies.)

@@ -137,12 +137,34 @@ const main = async () => {
       audio: !!document.querySelector("#results audio"),
       hist: document.querySelectorAll(".hist tbody tr").length,
       charts: document.querySelectorAll("#results canvas").length,
+      placement: !!document.querySelector(".segbar"),
+      bench: document.querySelectorAll("table.bench tbody tr").length,
+      deep: document.querySelectorAll("table.deep tbody tr").length,
+      sentences: document.querySelectorAll("table.sent tbody tr").length,
     }));
     check("an overall score is rendered", /^\d+$/.test(ui.ring || ""), "score " + ui.ring);
-    check("every metric row is rendered", ui.rows === 7, `${ui.rows} rows`);
+    check("every metric row is rendered", ui.rows === 8, `${ui.rows} rows`);
     check("both charts are drawn", ui.charts === 2, `${ui.charts} canvases`);
     check("playback of the take is offered", ui.audio);
     check("the attempt is saved to history", ui.hist === 1, `${ui.hist} rows`);
+    check("pause placement is shown", ui.placement);
+    check("the corpus comparison is shown", ui.bench >= 6, `${ui.bench} rows`);
+    check("the deeper reading is shown", ui.deep >= 6, `${ui.deep} rows`);
+    check("a sentence breakdown is shown", ui.sentences >= 5, `${ui.sentences} sentences`);
+
+    const deep = await page.evaluate(() => {
+      const r = window.__promptbook.getLast();
+      return { hnr: r.hnr, pitchSteadiness: r.pitchSteadiness, consonant: r.consonant,
+               rhythm: r.rhythm, levelDrift: r.levelDrift, stops: r.stops,
+               phrases: r.endings.nPhrases, sentences: r.sentences.length,
+               aligned: r.align && r.align.detected };
+    });
+    console.log("    deeper reading:", JSON.stringify(deep, (k, v) => typeof v === "number" ? +v.toFixed(2) : v));
+    check("voice quality is measured through the microphone", Number.isFinite(deep.hnr) && deep.hnr > 5,
+      `HNR ${deep.hnr?.toFixed(1)} dB`);
+    check("rhythm is measured", Number.isFinite(deep.rhythm), `nPVI ${deep.rhythm?.toFixed(0)}`);
+    check("phrases are found between the pauses", deep.phrases >= 4, `${deep.phrases} phrases`);
+    check("the reading is aligned to the text", deep.aligned > 30, `${deep.aligned} nuclei`);
 
     // switching form rescores the same take, which is the point of having forms
     const before = ui.ring;
