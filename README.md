@@ -56,6 +56,57 @@ Validated on a 3-reader LibriSpeech mix (all 11 turns and 3 speakers recovered e
 14-minute single-speaker phone recording (correctly reported as one speaker), and the benchmark
 corpus, where audience detection independently recovered Ken Robinson's actual laugh lines.
 
+## The practice app
+
+`docs/` is a self-contained web app that records you through the device microphone and scores the
+take live. It is plain HTML and ES modules with no build step and no dependencies, so GitHub Pages
+can serve it as-is, and an iPhone can install it to the home screen where it behaves like an app.
+
+Pick a form of speaking, read its model text aloud, and the page measures pace, articulation rate,
+pitch range, volume contrast, pauses and monotone stretches against what that form actually calls
+for. A eulogy and a battlefield exhortation want opposite things, so each form carries its own
+target bands and switching form rescores the same take.
+
+**Turning it on:** repository Settings, then Pages, then Source "Deploy from a branch", branch
+`main` (or this feature branch), folder `/docs`. It publishes to
+`https://<user>.github.io/Claude-Voice-Analyzer/`. The microphone needs HTTPS, which Pages provides.
+On an iPhone, open that URL in Safari, then Share and "Add to Home Screen".
+
+**Why a web app rather than a native one.** The microphone is the whole point, and a browser reaches
+it on both desktop and iOS. A native iOS build would need a Mac, Xcode, a developer account and a
+device to test on, none of which exist in the environment this was written in, so it could have been
+written but never run. The web version is tested here against a simulated microphone on every change.
+
+**What the recorder does that matters.** The browser's automatic gain control, noise suppression and
+echo cancellation are all switched off. Left at their defaults they would corrupt three of the seven
+measurements: gain control flattens loud against quiet, which is exactly the volume contrast being
+measured, and noise suppression strips the low end, which removes the fundamental of a low voice and
+makes pitch read an octave high. Audio is tapped as raw samples off the audio graph rather than
+encoded, so the analysis sees what the microphone produced and playback is built from the same array.
+
+Practice history is kept in browser storage on the device. Nothing is uploaded anywhere.
+
+```
+docs/
+  index.html    page, styles, and the phone record dock
+  app.js        UI, scoring, charts, history
+  dsp.js        the measurement code, shared with the test suite
+  modes.js      the six forms, their model texts and target bands
+  capture.js    microphone capture to raw samples
+  worklet.js    the audio worklet that taps the graph
+  sw.js         offline cache, so practice works without a signal
+web-tests/
+  dsp.test.mjs   74 checks against signals with known answers
+  live.test.mjs  27 checks driving the real microphone path in Chromium
+```
+
+Run them with `node web-tests/dsp.test.mjs` and `node web-tests/live.test.mjs`. The live test feeds
+Chromium a synthetic voice of known pitch as its microphone, so the whole chain is exercised:
+permission, worklet capture, sample buffer, analysis and the rendered score.
+
+(`docs/package.json` exists only so Node treats the `.js` files there as ES modules when the tests
+import them. It is not a package and has no dependencies.)
+
 ## Install
 
 ```bash

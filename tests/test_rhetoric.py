@@ -71,3 +71,17 @@ def test_structure_detects_story_opening_and_call_ending():
 def test_audience_stats_prefer_acoustic_source():
     a = R.audience_stats(None, 600.0, acoustic=[(10.0, 1.2, "laughter"), (50.0, 4.0, "applause")])
     assert a.laughter == 1 and a.applause == 1 and abs(a.events_per_min - 0.2) < 1e-6
+
+
+def test_sentences_split_after_a_closing_quote():
+    """Splitting on whitespace after a terminator merges a quoted sentence into the next one."""
+    t = 'He said "To-morrow is Saint Crispian." Then will he strip his sleeve. Old men forget.'
+    s = R.sentences(t)
+    assert len(s) == 3, s
+    assert s[0].endswith('Crispian."'), s[0]
+    assert s[1] == "Then will he strip his sleeve."
+
+
+def test_sentences_keep_plain_text_behaviour():
+    t = "One thing. Two things! Three things? And a tail with no stop"
+    assert R.sentences(t) == ["One thing.", "Two things!", "Three things?", "And a tail with no stop"]

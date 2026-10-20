@@ -1,0 +1,17 @@
+{
+  "name": "Prompt Book",
+  "short_name": "Prompt Book",
+  "description": "Read a model speech aloud and have your volume, pitch, pace and pauses measured against what that form of speaking calls for.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#eceef1",
+  "theme_color": "#9a6b1f",
+  "icons": [
+    { "src": "./icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "./icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

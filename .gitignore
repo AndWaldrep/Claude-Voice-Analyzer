@@ -7,3 +7,4 @@ reports/
 *.ogg
 *.flac
 .pytest_cache/
+web-tests/.tmp/

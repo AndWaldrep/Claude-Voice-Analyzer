@@ -69,10 +69,27 @@ more most such own same other another each every both few own s t re ve ll d m o
 
 
 # --------------------------------------------------------------------------- helpers
+SENTENCE_RE = re.compile(r"[^.!?]*[.!?]+[\"'\u201d\u2019)\]]*")
+
+
 def sentences(text: str) -> list[str]:
-    """Split into sentences, keeping the terminal punctuation."""
-    parts = re.split(r"(?<=[.!?])\s+", text.strip())
-    return [p.strip() for p in parts if p.strip()]
+    """Split into sentences, keeping terminal punctuation and any closing quote.
+
+    Splitting on whitespace after a terminator silently fails on `he said "...Crispian." Then`,
+    because the character before the space is the quote rather than the full stop, so two
+    sentences merge into one and sentence-length statistics skew long.
+    """
+    out, last = [], 0
+    for m in SENTENCE_RE.finditer(text):
+        if not m.group(0):
+            break
+        if m.group(0).strip():
+            out.append(m.group(0).strip())
+        last = m.end()
+    tail = text[last:].strip()
+    if tail:
+        out.append(tail)
+    return out
 
 
 def words_of(s: str) -> list[str]:
