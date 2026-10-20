@@ -235,8 +235,17 @@ function renderResults(r) {
   html += `</div>`;
 
   /* ---- where the pauses landed: the single most discriminating thing measured ---- */
-  if (r.placement) {
+  if (r.placement && r.placementTrusted) {
     const pl = r.placement;
+    const caveat = r.placementCaveat === "incomplete"
+      ? `You produced about ${Math.round(r.completeness * 100)}% of the passage's syllables, so some
+         of it may not have been read. Positions below are worked out by counting syllables against
+         the text, so anything left out shifts them and the split is then only a guess.`
+      : r.placementCaveat === "extra"
+      ? `You produced about ${Math.round(r.completeness * 100)}% of the passage's syllables, so
+         something was repeated or added. Positions below are worked out by counting syllables
+         against the text, so the extra words shift them and the split is then only a guess.`
+      : "";
     const bar = (n, cls) => `<span class="seg ${cls}" style="flex:${Math.max(n, 0.0001)}"></span>`;
     html += `<div class="block">
       <h3>Where your pauses landed</h3>
@@ -253,7 +262,13 @@ function renderResults(r) {
         stop and as hunting for a word inside a clause.
         ${pl.longestMid.length ? "Longest mid-clause stops: " + pl.longestMid.map(m =>
           `${m.dur.toFixed(1)}s around syllable ${Math.round(m.syllable)}`).join(", ") + "." : ""}</p>
+      ${caveat ? `<p class="note">${caveat}</p>` : ""}
     </div>`;
+  } else if (r.align) {
+    html += `<div class="block"><h3>Where your pauses landed</h3>
+      <p class="mnote">Not measured. Placing a pause in the text means counting the syllables you
+      produced against the syllables the passage contains, and this reading was too far from the
+      page for that to mean anything. Read the passage as written and it will be measured.</p></div>`;
   }
 
   /* ---- against the corpus ---- */

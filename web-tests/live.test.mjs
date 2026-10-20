@@ -138,6 +138,7 @@ const main = async () => {
       hist: document.querySelectorAll(".hist tbody tr").length,
       charts: document.querySelectorAll("#results canvas").length,
       placement: !!document.querySelector(".segbar"),
+      placementBlock: [...document.querySelectorAll(".block h3")].some(h => /pauses landed/i.test(h.textContent)),
       bench: document.querySelectorAll("table.bench tbody tr").length,
       deep: document.querySelectorAll("table.deep tbody tr").length,
       sentences: document.querySelectorAll("table.sent tbody tr").length,
@@ -147,7 +148,17 @@ const main = async () => {
     check("both charts are drawn", ui.charts === 2, `${ui.charts} canvases`);
     check("playback of the take is offered", ui.audio);
     check("the attempt is saved to history", ui.hist === 1, `${ui.hist} rows`);
-    check("pause placement is shown", ui.placement);
+    // the fake microphone plays synthetic tones, not the passage, so the app should decline to
+    // place the pauses in the text rather than invent positions. Exercising the refusal through
+    // the real UI is the point of this assertion.
+    const { trusted, stopsWithheld } = await page.evaluate(() => {
+      const r = window.__promptbook.getLast();
+      return { trusted: r.placementTrusted, stopsWithheld: r.stops === null || Number.isNaN(r.stops) };
+    });
+    check("pause placement handled honestly", ui.placementBlock && (trusted ? ui.placement : !ui.placement),
+      trusted ? "measured and shown" : "refused, because the audio does not match the passage");
+    check("an unplaceable reading reports no pause-placement score", trusted || stopsWithheld,
+      "stops withheld");
     check("the corpus comparison is shown", ui.bench >= 6, `${ui.bench} rows`);
     check("the deeper reading is shown", ui.deep >= 6, `${ui.deep} rows`);
     check("a sentence breakdown is shown", ui.sentences >= 5, `${ui.sentences} sentences`);

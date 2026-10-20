@@ -78,6 +78,14 @@ as after a full stop, at a comma, or mid-clause. Across the thirteen recorded sp
 benchmark corpus, at least 57% of pauses landed after a full stop and the median was 68%. The same
 silence reads as command after a full stop and as hunting for a word inside a clause.
 
+That measurement is only honest if it knows when it cannot be made. A reader who skips a line
+shifts every later position by whatever they left out, and no amount of arithmetic recovers that
+without knowing what was actually said. So the app counts the syllables you produced against the
+syllables the passage contains, and when the two disagree it says the placement is a guess rather
+than reporting a number. Readings that follow the page are measured exactly; readings that wander
+are flagged. The one case it must never get wrong is a reader who follows the text but never lands
+a pause, because that is the finding worth having, and it is reported rather than explained away.
+
 Beyond the score there is a deeper reading: harmonics-to-noise ratio (Boersma's formulation, from
 the autocorrelation peak), pitch and loudness steadiness, consonant energy in the 2 to 8 kHz band,
 rhythm variability, loudness drift across the reading, whether phrases trail off at their ends,
@@ -114,16 +122,21 @@ docs/
   worklet.js    the audio worklet that taps the graph
   sw.js         offline cache, so practice works without a signal
 web-tests/
-  dsp.test.mjs   109 checks against signals with known answers
-  live.test.mjs   35 checks driving the real microphone path in Chromium
+  dsp.test.mjs          109 checks against signals with known answers
+  robustness.test.mjs    19 checks on imperfect readers: skipped lines, repeats, ad-libs
+  live.test.mjs          36 checks driving the real microphone path in Chromium
 ```
 
-Run them with `node web-tests/dsp.test.mjs` and `node web-tests/live.test.mjs`. The live test feeds
+Run them with `node web-tests/<name>.test.mjs`. The live test feeds
 Chromium a synthetic voice of known pitch as its microphone, so the whole chain is exercised:
 permission, worklet capture, sample buffer, analysis and the rendered score.
 
-Pause placement is tested by building audio that reads the real script and pauses only at its full
-stops, which must score 100%, and again pausing only inside sentences, which must score near zero.
+Pause placement is tested by building audio that reads the real passage and pauses only at its full
+stops, which must score 100%, and again pausing only inside sentences, which must score zero. The
+robustness suite then reads it badly on purpose, and every parameter in the alignment was set by
+measuring those failures rather than chosen by taste. Giving the alignment a free scale lets it
+explain any sequence of pauses at all: the same wholly mid-clause reading scores 36% loosened and
+0% nailed down, and there is a test that holds it to that.
 
 (`docs/package.json` exists only so Node treats the `.js` files there as ES modules when the tests
 import them. It is not a package and has no dependencies.)

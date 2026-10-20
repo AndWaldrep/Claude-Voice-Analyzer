@@ -109,13 +109,18 @@ export function pauses(mask) {
  *  The window is 5 frames (100 ms). At 3 frames, ripple inside one held vowel counted as two
  *  syllables and slow speech over-counted by as much as 76%. */
 export function syllablePeaks(db, mask, floor) {
+  // Both windows were set by measuring the count against passages read at known rates. A 5-frame
+  // smoothing with a 0.3 s valley search held to 2% from 0.11 s per syllable up to 0.28 s, then
+  // fell apart on slower delivery: a held vowel has no valley within 0.3 s, so its own ripple read
+  // as extra syllables and a eulogy pace over-counted by 99%. Widening both holds 95-100% across
+  // 0.11 to 0.42 s per syllable, which spans every rate a person actually speaks at.
   const s = new Float32Array(db.length);
   for (let i = 0; i < db.length; i++) {
     let t = 0, c = 0;
-    for (let j = Math.max(0, i - 2); j <= Math.min(db.length - 1, i + 2); j++) { t += db[j]; c++; }
+    for (let j = Math.max(0, i - 4); j <= Math.min(db.length - 1, i + 4); j++) { t += db[j]; c++; }
     s[i] = t / c;
   }
-  const minGap = Math.round(0.1 / HOP), vw = Math.round(0.3 / HOP);
+  const minGap = Math.round(0.1 / HOP), vw = Math.round(0.45 / HOP);
   let last = -1e9, n = 0;
   const at = [];
   for (let i = 1; i < s.length - 1; i++) {
@@ -409,22 +414,126 @@ export function alignToScript(nuclei, script) {
  *
  *  This is the distinction that separates a commanding reader from an anxious one. Both may be
  *  silent for the same number of seconds. The difference is that one stops after landing a
- *  sentence and the other stops in the middle of a clause, hunting for the next word. Across every
- *  great speaker measured for this project, at least 57% of pauses fell after a full stop, and the
- *  median was 68%. */
-export function classifyPauses(pauseList, align, script, tolSyll = 1.5) {
+ *  sentence and the other stops mid-clause, hunting for the next word. Across every speaker in the
+ *  benchmark corpus at least 57% of pauses fell after a full stop, median 68%.
+ *
+ *  Two design decisions carry this, both arrived at by measuring the failures.
+ *
+ *  Matching each pause to its nearest candidate fails the moment a reader departs from the text:
+ *  skip one sentence and every later pause is out by thirty syllables, so a flawless reading
+ *  scored 14%. What runs instead is a monotonic alignment over the whole sequence, which may
+ *  advance several sentences in one step (the reader's eye jumped a line) or match nothing at all
+ *  (the pause was mid-clause), so local damage stays local. It searches for its own scale too,
+ *  because a reader who skips a line also drags the global ratio down with them.
+ *
+ *  Only full stops are aligned against. Commas are far too dense -- one every seven or eight
+ *  syllables -- and with a free scale an alignment against them can explain any sequence at all,
+ *  which showed up as a reading paused entirely mid-clause being scored at 100%. Full stops are
+ *  sparse enough to pin the reading down. Commas are consulted afterwards, once the alignment is
+ *  settled, only to tell a breath at a comma apart from a stall in open text.
+ */
+export function classifyPauses(pauseList, align, script, opts = {}) {
   if (!align || !pauseList.length) return null;
-  // Compared in syllables rather than seconds: a pause is judged by how far through the text the
-  // reader was when they stopped, which does not change with how long the pause itself lasted.
-  const near = (pos, arr) => arr.length ? Math.min(...arr.map(v => Math.abs(pos - v))) : Infinity;
-  const stops = script.boundaries || [], commas = script.commas || [];
-  let stop = 0, clause = 0, mid = 0;
+  // maxDrift is how far the alignment may stretch to re-synchronise after a reader departs from
+  // the text; stopTol is how close an individual pause must then sit to the full stop it was
+  // matched to before it counts as landing there. Separating the two keeps the alignment robust
+  // to a skipped line without letting a stall in open text be credited as a landed pause.
+  // Every one of these was settled by measuring failures rather than chosen by taste.
+  //   maxDrift  how far the alignment may stretch to re-synchronise after a stumble
+  //   stopTol   how close a pause must then sit to its full stop to count as landing there
+  //   scaleSpan how far the syllable-to-text ratio may be nudged, and offSpan how far the whole
+  //             reading may slide. Both are nearly nailed shut, and that is the point. Given real
+  //             freedom the alignment stops measuring and starts explaining: it will find the
+  //             scale that drops a few pauses onto full stops and pay the mid-clause cost for the
+  //             rest, so a reading paused entirely mid-clause scored 43%. Nailed down it scores 0,
+  //             which is the truth. The detector earns this: it counts syllables to within 5%
+  //             across every rate a person speaks at, so the ratio is already known.
+  const { midCost = 6, maxDrift = 30, stopTol = 2.5, commaTol = 2.5,
+          scaleSpan = 0.02, offSpan = 1 } = opts;
+  const stopsAt = (script.boundaries || []).filter(b => b > 0);
+  if (stopsAt.length < 2) return null;
+
+  const counts = pauseList.map(p => {
+    let i = -1;
+    while (i + 1 < align.nuclei.length && align.nuclei[i + 1] < p.start) i++;
+    return i + 1;
+  });
+  const m = Math.min(counts.length, 60), K = stopsAt.length, INF = 1e12;
+  const base = align.scale || 1;
+
+  const solve = (k, off) => {
+    const obs = counts.slice(0, m).map(c => c / k - off);
+    const best = Array.from({ length: m }, () => new Float64Array(K).fill(INF));
+    const from = Array.from({ length: m }, () => new Int32Array(K).fill(-1));
+    const step = (i0, j0, i, j) => {
+      const dObs = obs[i] - (i0 < 0 ? 0 : obs[i0]);
+      const dAnc = stopsAt[j] - (j0 < 0 ? 0 : stopsAt[j0]);
+      if (dAnc < 0) return INF;
+      const mismatch = Math.abs(dObs - dAnc);
+      if (mismatch > maxDrift) return INF;
+      return mismatch + midCost * (i - (i0 < 0 ? -1 : i0) - 1);
+    };
+    for (let i = 0; i < m; i++) {
+      for (let j = 0; j < K; j++) {
+        let b = step(-1, -1, i, j), f = -1;
+        for (let i0 = 0; i0 < i; i0++) {
+          const bi = best[i0];
+          for (let j0 = 0; j0 < j; j0++) {
+            if (bi[j0] >= INF) continue;
+            const c = bi[j0] + step(i0, j0, i, j);
+            if (c < b) { b = c; f = i0 * K + j0; }
+          }
+        }
+        best[i][j] = b; from[i][j] = f;
+      }
+    }
+    let eI = -1, eJ = -1, eC = INF;
+    for (let i = 0; i < m; i++) for (let j = 0; j < K; j++) {
+      const c = best[i][j] + midCost * (m - 1 - i);
+      if (c < eC) { eC = c; eI = i; eJ = j; }
+    }
+    const matched = new Array(m).fill(-1);
+    let ci = eI, cj = eJ;
+    while (ci >= 0) {
+      matched[ci] = stopsAt[cj];
+      const f = from[ci][cj];
+      if (f < 0) break;
+      ci = Math.floor(f / K); cj = f % K;
+    }
+    return { cost: eC, matched, obs, k, off };
+  };
+
+  // Searched over both scale and offset. Scale alone cannot absorb a reader who ad-libs an opening
+  // line: that shifts every later position by a constant rather than stretching it, and without an
+  // offset the whole alignment is thrown off from the first pause onwards.
+  // The search is deliberately narrow. Given a free scale and a free offset this alignment can
+  // explain any sequence of pauses at all, including a reading paused entirely mid-clause, which
+  // it duly scored at 100%. The ranges below cover detection slop and nothing more. A reader who
+  // departs from the text further than this is not placed against it at all: the fit quality is
+  // reported instead, and the caller withholds the number.
+  let fit = null;
+  const scaleStep = Math.max(0.005, scaleSpan / 2);
+  for (let mul = 1 - scaleSpan; mul <= 1 + scaleSpan + 1e-9; mul += scaleStep) {
+    for (let off = -offSpan; off <= offSpan; off += 1) {
+      const t = solve(base * mul, off);
+      if (!fit || t.cost < fit.cost) fit = t;
+    }
+  }
+
+  const commas = script.commas || [];
+  let stop = 0, clause = 0, mid = 0, residual = 0, nMatched = 0;
+  let drift = 0, nDrift = 0;
   const midExamples = [];
-  for (const p of pauseList) {
-    const pos = align.syllableAt(p.start);
-    if (near(pos, stops) <= tolSyll) stop++;
-    else if (near(pos, commas) <= tolSyll) clause++;
-    else { mid++; midExamples.push({ ...p, syllable: pos }); }
+  for (let i = 0; i < m; i++) {
+    if (fit.matched[i] >= 0) { drift += Math.abs(fit.obs[i] - fit.matched[i]); nDrift++; }
+    if (fit.matched[i] >= 0 && Math.abs(fit.obs[i] - fit.matched[i]) <= stopTol) {
+      stop++; residual += Math.abs(fit.obs[i] - fit.matched[i]); nMatched++;
+      continue;
+    }
+    const pos = fit.obs[i];
+    const d = commas.length ? Math.min(...commas.map(c => Math.abs(pos - c))) : Infinity;
+    if (d <= commaTol) clause++;
+    else { mid++; midExamples.push({ ...pauseList[i], syllable: pos }); }
   }
   const n = stop + clause + mid;
   return {
@@ -432,7 +541,15 @@ export function classifyPauses(pauseList, align, script, tolSyll = 1.5) {
     atFullStopPct: n ? stop / n * 100 : NaN,
     midClausePct: n ? mid / n * 100 : NaN,
     longestMid: midExamples.sort((a, b) => b.dur - a.dur).slice(0, 4),
-    tolerance: tolSyll,
+    // mean distance, in syllables, between a matched pause and the full stop it was matched to.
+    // Small means the reading tracked the page; large means it did not, and the split above
+    // should not be trusted.
+    residual: nMatched ? residual / nMatched : NaN,
+    matchedPct: n ? nMatched / n * 100 : NaN,
+    // How far, in syllables, the reading sat from the places the text says sentences end. Small
+    // means the reader tracked the page. Large means they skipped, repeated or improvised, and
+    // the split above is then only as good as the guess about where they were.
+    drift: nDrift ? drift / nDrift : NaN,
   };
 }
 
@@ -458,6 +575,8 @@ export function perSentence(align, script, db, mask, f0, times) {
   }
   return out;
 }
+
+const r_completeness = (syl, script) => (script && script.syllables) ? syl.count / script.syllables : 0;
 
 /* ------------------------------------------------------------------ the whole measurement */
 /**
@@ -493,6 +612,22 @@ export async function analyse(x, sr, script, onProgress = () => {}) {
   }
   const align = alignToScript(syl.at, script);
   const placement = align ? classifyPauses(ps, align, script) : null;
+  // A reading that wandered off the page cannot be placed against it. Both signals matter: a poor
+  // residual means the pauses did not land where the text says sentences end, and a completeness
+  // far from 1 means the reader said materially more or less than the passage contains.
+  // Only gross failure is refused. An earlier rule also demanded that a quarter of pauses match a
+  // full stop, which threw away the very reading worth reporting: a speaker who never lands a
+  // pause is the one who most needs telling. Divergence from the text is surfaced as a caveat
+  // instead, through `drift`, rather than used to withhold the finding.
+  const comp = r_completeness(syl, script);
+  const placementTrusted = !!placement && comp > 0.7 && comp < 1.45;
+  // Whether the reading can be placed against the text turns on how much was said, not on where
+  // the pauses fell. Judging it by how far the pauses sat from sentence ends looks reasonable and
+  // is wrong: a speaker who reads every word but never lands a pause produces exactly that
+  // signature, and would be told they had misread when their delivery is the actual finding.
+  // Syllables counted against syllables in the text separates the two cleanly.
+  const placementCaveat = !placementTrusted ? null
+    : comp < 0.92 ? "incomplete" : comp > 1.04 ? "extra" : null;
   const sentences = align ? perSentence(align, script, db, mask, f0, times) : [];
   onProgress(0.95);
 
@@ -527,7 +662,8 @@ export async function analyse(x, sr, script, onProgress = () => {}) {
     rhythm: rhythmVariability(syl.at),
     // the share of pauses that land after a full stop, scored alongside the rest: across every
     // great speaker measured for this project it never fell below 57%
-    stops: placement ? placement.atFullStopPct : NaN,
+    stops: placementTrusted ? placement.atFullStopPct : NaN,
+    placementTrusted, placementCaveat,
     endings, placement, sentences,
     align: align ? { detected: align.detected, expected: align.expected, scale: align.scale } : null,
 
