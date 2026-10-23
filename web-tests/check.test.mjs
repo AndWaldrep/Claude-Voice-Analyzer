@@ -128,6 +128,50 @@ const main = async () => {
     check("no uncaught errors with a microphone", errors.length === 0, errors.join(" | ") || "clean");
   } finally { await browser.close(); }
 
+  /* ------------------------- refused before asking, as Brave on an iPhone did in use */
+  browser = await chromium.launch({
+    executablePath: CHROME,
+    args: [...base, "--use-fake-device-for-media-stream"],
+  });
+  try {
+    const ctx = await browser.newContext({
+      viewport: PHONE, permissions: [],
+      userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 " +
+                 "(KHTML, like Gecko) Version/18.7 Mobile/15E148 Safari/604.1",
+    });
+    await ctx.addInitScript(() => {
+      Object.defineProperty(navigator, "brave", { value: { isBrave: () => Promise.resolve(true) } });
+    });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on("pageerror", e => errors.push(e.message));
+    await page.goto(`http://127.0.0.1:${PORT}/check.html`, { waitUntil: "load", timeout: 30000 });
+    await page.locator("#go").click();
+    await page.waitForFunction(() => [...document.querySelectorAll("#out td")]
+      .some(td => td.textContent === "Plain request (no settings)"), null, { timeout: 20000 });
+    const ios = await readPage(page);
+    check("an iPhone is recognised", /^yes/.test(valueOf(ios.rows, "iPhone or iPad")));
+    check("Brave is recognised", valueOf(ios.rows, "Looks like Brave") === "yes");
+    check("the refusal is NotAllowedError", valueOf(ios.rows, "Result") === "refused: NotAllowedError",
+      valueOf(ios.rows, "Result"));
+    check("an instant refusal is called out as no prompt shown",
+      /no prompt was shown/.test(valueOf(ios.rows, "Answered after")), valueOf(ios.rows, "Answered after"));
+    check("the stored permission is reported", valueOf(ios.rows, "Stored permission for this site").length > 0,
+      valueOf(ios.rows, "Stored permission for this site"));
+    check("the microphones visible are counted",
+      /^\d+$/.test(valueOf(ios.rows, "Microphones visible to the page")),
+      valueOf(ios.rows, "Microphones visible to the page"));
+    check("the plain request is tried too", /refused|granted/.test(valueOf(ios.rows, "Plain request (no settings)")),
+      valueOf(ios.rows, "Plain request (no settings)"));
+    check("the advice sends them to the iPhone's Settings for Brave",
+      /Settings → Apps → Brave → Microphone/.test(ios.advice), ios.advice.slice(0, 90));
+    check("and to Brave Shields", /Shields/.test(ios.advice));
+    check("and to Safari as the fallback", /Safari/.test(ios.advice));
+    check("the advice is on screen", ios.adviceTop >= 0 && ios.adviceTop < ios.viewport,
+      `advice at ${ios.adviceTop}px`);
+    check("no uncaught errors on an iPhone refusal", errors.length === 0, errors.join(" | ") || "clean");
+  } finally { await browser.close(); }
+
   /* ---------------------------------------------- the microphone refuses */
   browser = await chromium.launch({ executablePath: CHROME, args: base });
   try {
