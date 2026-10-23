@@ -4,6 +4,12 @@ import * as BENCH from "./benchmarks.js";
 import { Recorder, toWav, decodeFile } from "./capture.js";
 
 const $ = id => document.getElementById(id);
+
+/** Reject rather than hang. Some privacy browsers neither prompt nor refuse. */
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, rej) =>
+    setTimeout(() => { const e = new Error("timed out"); e.name = "TimeoutError"; rej(e); }, ms))]);
+}
 const clock = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
 
 let modeKey = "oratory";
@@ -125,13 +131,18 @@ async function toggleRecord() {
     return;
   }
   try {
-    $("micnote").hidden = true;
-    const info = await rec.start();
+    // acknowledge the tap straight away: on a phone the permission prompt can take a moment, and
+    // some browsers never show one at all, so silence here reads as a dead button
+    showNote("Asking for the microphone\u2026");
+    const info = await withTimeout(rec.start(), 12000);
+    clearNote();
     setLive(true);
     if (info.sampleRate < 16000) {
       showNote(`The microphone is running at ${info.sampleRate} Hz, which is low. Pitch may be coarse.`);
     }
   } catch (e) {
+    try { await rec.stop(); } catch (_) {}
+    setLive(false);
     const n = e && e.name;
     // Installed to an iPhone home screen the page runs in a separate standalone context, and
     // several versions of iOS have refused the microphone there while allowing it in Safari.
@@ -141,19 +152,30 @@ async function toggleRecord() {
     showNote(
       n === "NotAllowedError"
         ? (standalone
-            ? "Microphone access was refused. Some versions of iOS withhold the microphone from a page opened from the Home Screen. Open the same link in Safari and allow the microphone there."
-            : "Microphone access was refused. Allow it for this site in your browser settings, then press record again.")
+            ? "Microphone refused. Some versions of iOS withhold the microphone from a page opened from the Home Screen. Open the same link in Safari and allow it there."
+            : "Microphone refused. If no prompt appeared, a shield or privacy setting is blocking it: in Brave tap the lion by the address bar and turn Shields down for this site, then press record again. Otherwise allow the microphone for this site in your browser settings.")
       : n === "NotFoundError" ? "No microphone was found on this device."
       : n === "NotReadableError" ? "The microphone is in use by another app. Close it and try again."
       : n === "SecurityError" ? "The microphone needs a secure connection. Open this page over https."
+      : n === "TimeoutError" ? "The microphone never answered. A shield or privacy setting is usually the cause: in Brave tap the lion by the address bar and turn Shields down for this site, or try the page in Safari or Chrome."
+      : n === "NotSupportedError" ? "This browser will not give a web page the microphone. Try Safari or Chrome, or record on your phone's voice memo app and use \u201cAnalyse a file instead\u201d."
       : "Could not start recording: " + (e && e.message ? e.message : "unknown error"));
   }
 }
 
+/** Say something the user will actually see. On a phone the Coach card sits below the passage, so
+ *  a note placed only there can render a thousand pixels below the fold and the button looks dead.
+ *  Everything goes to the dock as well, which is fixed to the bottom of the screen. */
 function showNote(msg) {
-  const n = $("micnote");
-  n.textContent = msg;
-  n.hidden = false;
+  for (const id of ["micnote", "dockmsg"]) {
+    const n = $(id);
+    if (!n) continue;
+    n.textContent = msg;
+    n.hidden = false;
+  }
+}
+function clearNote() {
+  for (const id of ["micnote", "dockmsg"]) { const n = $(id); if (n) n.hidden = true; }
 }
 
 /* ------------------------------------------------------------------ analysis */
@@ -497,7 +519,15 @@ renderModes();
 renderScript();
 loadHistory();
 renderHistory();
-if (!Recorder.supported()) showNote("This browser cannot reach a microphone. You can still analyse a recorded file.");
+if (!Recorder.supported()) {
+  showNote(window.isSecureContext === false
+    ? "This page is not on a secure connection, so no browser will grant it a microphone. Open it over https."
+    : "This browser will not give a web page the microphone. Try Safari or Chrome, or record on your phone's voice memo app and use \u201cAnalyse a file instead\u201d.");
+}
+// nothing below this point should be able to fail silently
+window.addEventListener("error", e => showNote("Something went wrong: " + (e.message || "unknown error")));
+window.addEventListener("unhandledrejection", e =>
+  showNote("Something went wrong: " + ((e.reason && e.reason.message) || "unknown error")));
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
 }

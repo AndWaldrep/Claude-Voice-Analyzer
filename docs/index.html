@@ -199,17 +199,23 @@ table.deep th{text-align:left; font-size:10.5px; letter-spacing:.07em; text-tran
 .foot a{color:var(--brass)}
 /* phones: keep the control within thumb reach while the script fills the screen */
 .dock{display:none}
+/* Anything the app needs to say has to reach a thumb at the bottom of a phone. The note inside
+   the Coach card sits below a long passage: with the microphone refused it rendered 1668px down
+   an 844px screen, so the button simply looked dead. */
+.dockmsg{margin:0 0 8px; font-size:12.5px; line-height:1.4; color:var(--bad); background:#a6352f14;
+  border-left:2px solid var(--bad); border-radius:2px; padding:7px 10px}
 @media (max-width:860px){
-  .dock{display:flex; position:fixed; left:0; right:0; bottom:0; z-index:20; gap:10px; align-items:center;
+  .dock{display:block; position:fixed; left:0; right:0; bottom:0; z-index:20;
     background:var(--panel); border-top:1px solid var(--rule); box-shadow:0 -4px 16px #0000001f;
     padding:10px max(16px,env(safe-area-inset-right,0px)) calc(10px + env(safe-area-inset-bottom,0px))
             max(16px,env(safe-area-inset-left,0px))}
+  .dockrow{display:flex; gap:10px; align-items:center}
   .dock .btn{flex:0 0 auto}
   .dockmeter{flex:1 1 auto; min-width:0; display:grid; gap:4px}
   .dockmeter .meter{height:14px}
   .dockstat{display:flex; justify-content:space-between; font-size:10.5px; color:var(--muted);
     font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums}
-  .wrap{padding-bottom:104px}
+  .wrap{padding-bottom:132px}
   .script{max-height:62vh}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important; animation:none!important}}
@@ -304,10 +310,13 @@ table.deep th{text-align:left; font-size:10.5px; letter-spacing:.07em; text-tran
     <a href="./ORATORY.md">ORATORY.md</a>.</p>
 </div>
 <div class="dock" id="dock">
-  <button class="btn" id="dockbtn"><span class="dot"></span><span id="dockLabel">Record</span></button>
-  <div class="dockmeter">
-    <div class="meter" aria-hidden="true"><span class="zone" id="dzone"></span><span class="fill" id="dfill"></span></div>
-    <div class="dockstat"><span id="dlvl">ready</span><span id="delapsed">0:00</span><span id="dtarget"></span></div>
+  <p class="dockmsg" id="dockmsg" role="status" hidden></p>
+  <div class="dockrow">
+    <button class="btn" id="dockbtn"><span class="dot"></span><span id="dockLabel">Record</span></button>
+    <div class="dockmeter">
+      <div class="meter" aria-hidden="true"><span class="zone" id="dzone"></span><span class="fill" id="dfill"></span></div>
+      <div class="dockstat"><span id="dlvl">ready</span><span id="delapsed">0:00</span><span id="dtarget"></span></div>
+    </div>
   </div>
 </div>
 <script type="module" src="./app.js"></script>

@@ -44,6 +44,13 @@ export class Recorder {
     this.frames = 0;
 
     this.stream = await navigator.mediaDevices.getUserMedia(CONSTRAINTS);
+    // A browser that hands back a stream with nothing in it has refused without saying so.
+    if (!this.stream.getAudioTracks || this.stream.getAudioTracks().length === 0) {
+      try { this.stream.getTracks().forEach(t => t.stop()); } catch (e) {}
+      const err = new Error("the microphone returned no audio");
+      err.name = "NotReadableError";
+      throw err;
+    }
     const AC = window.AudioContext || window.webkitAudioContext;
     this.ctx = new AC();
     // Safari hands back a suspended context; it only starts inside the user gesture.

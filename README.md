@@ -117,6 +117,13 @@ If the microphone is refused when the page is opened from the Home Screen, open 
 Safari instead. Several versions of iOS have withheld it from standalone pages while allowing it in
 the browser; the page says so rather than just failing.
 
+Brave blocks the microphone through Shields on some sites without showing a prompt, so a press can
+produce no response at all. The request is given twelve seconds before it is treated as refused,
+and the message names Shields as the usual cause. Anything the app has to say is shown in the bar
+fixed to the bottom of the screen as well as in the Coach card: the card sits below the passage,
+and a note placed only there rendered 1668 pixels down an 844 pixel screen, which is why the button
+looked dead rather than refused.
+
 **Why a web app rather than a native one.** The microphone is the whole point, and a browser reaches
 it on both desktop and iOS. A native iOS build would need a Mac, Xcode, a developer account and a
 device to test on, none of which exist in the environment this was written in, so it could have been
@@ -146,6 +153,7 @@ web-tests/
   robustness.test.mjs    31 checks on imperfect readers: missed words, rephrasings, skipped lines
   live.test.mjs          37 checks driving the real microphone path in Chromium,
                          run at the site root and again under a /repo/ base path
+  mobile.test.mjs        10 checks on a phone-sized screen with no microphone
 ```
 
 Run them with `node web-tests/<name>.test.mjs`. The live test feeds
