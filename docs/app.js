@@ -133,10 +133,19 @@ async function toggleRecord() {
     }
   } catch (e) {
     const n = e && e.name;
+    // Installed to an iPhone home screen the page runs in a separate standalone context, and
+    // several versions of iOS have refused the microphone there while allowing it in Safari.
+    // Worth naming, because the page otherwise looks broken when the fix is to open it in Safari.
+    const standalone = window.navigator.standalone === true ||
+      window.matchMedia("(display-mode: standalone)").matches;
     showNote(
-      n === "NotAllowedError" ? "Microphone access was refused. Allow it for this page in your browser settings, then press record again."
+      n === "NotAllowedError"
+        ? (standalone
+            ? "Microphone access was refused. Some versions of iOS withhold the microphone from a page opened from the Home Screen. Open the same link in Safari and allow the microphone there."
+            : "Microphone access was refused. Allow it for this site in your browser settings, then press record again.")
       : n === "NotFoundError" ? "No microphone was found on this device."
       : n === "NotReadableError" ? "The microphone is in use by another app. Close it and try again."
+      : n === "SecurityError" ? "The microphone needs a secure connection. Open this page over https."
       : "Could not start recording: " + (e && e.message ? e.message : "unknown error"));
   }
 }

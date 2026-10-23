@@ -20,6 +20,10 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DOCS = path.join(HERE, "..", "docs");
 const TMP = path.join(HERE, ".tmp");
 const PORT = 8911;
+// A project site on GitHub Pages is served from /<repo>/, not from the root. Running the tests
+// under a base path is what proves the deployment will work: one absolute "/..." anywhere and the
+// scripts, the worklet, the manifest or the service worker silently fail to load.
+const BASE = process.env.BASE_PATH || "";
 const CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
 const F0 = 130;                       // the pitch the fake microphone will produce
 
@@ -29,7 +33,10 @@ const MIME = { ".html": "text/html", ".js": "text/javascript", ".json": "applica
 
 function serve(root, port) {
   const s = http.createServer((q, res) => {
-    let f = path.join(root, decodeURIComponent(q.url.split("?")[0]));
+    let url = decodeURIComponent(q.url.split("?")[0]);
+    if (BASE && url.startsWith(BASE)) url = url.slice(BASE.length) || "/";
+    else if (BASE) { res.writeHead(404); res.end("outside base path"); return; }
+    let f = path.join(root, url);
     if (f.endsWith("/") || f.endsWith(path.sep)) f = path.join(f, "index.html");
     fs.readFile(f, (e, d) => {
       if (e) { res.writeHead(404); res.end("not found"); return; }
@@ -63,7 +70,8 @@ const main = async () => {
     page.on("pageerror", e => errors.push(e.message));
     page.on("console", m => { if (m.type() === "error") errors.push("console: " + m.text()); });
 
-    await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: "load", timeout: 30000 });
+    await page.goto(`http://127.0.0.1:${PORT}${BASE}/index.html`, { waitUntil: "load", timeout: 30000 });
+    check(`served from ${BASE || "the site root"}`, true);
     await page.waitForFunction(() => !!window.__promptbook, null, { timeout: 15000 });
     check("the page loads and the module initialises", true);
     check("no errors on load", errors.length === 0, errors.join(" | ") || "clean");

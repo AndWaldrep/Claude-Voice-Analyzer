@@ -105,8 +105,17 @@ headline figure is also placed as a percentile against the benchmark corpus.
 
 **Turning it on:** repository Settings, then Pages, then Source "Deploy from a branch", branch
 `main` (or this feature branch), folder `/docs`. It publishes to
-`https://<user>.github.io/Claude-Voice-Analyzer/`. The microphone needs HTTPS, which Pages provides.
-On an iPhone, open that URL in Safari, then Share and "Add to Home Screen".
+`https://<user>.github.io/Claude-Voice-Analyzer/`. The microphone needs a secure connection, which
+Pages provides. On an iPhone, open that URL in Safari, then Share and "Add to Home Screen".
+
+A project site is served from `/<repo>/` rather than the root, which is where this sort of thing
+usually breaks: one absolute path and the scripts, the audio worklet, the manifest or the service
+worker quietly fail to load. Every reference is relative, and the live microphone test runs under a
+base path as well as at the root so the deployed shape stays covered.
+
+If the microphone is refused when the page is opened from the Home Screen, open the same link in
+Safari instead. Several versions of iOS have withheld it from standalone pages while allowing it in
+the browser; the page says so rather than just failing.
 
 **Why a web app rather than a native one.** The microphone is the whole point, and a browser reaches
 it on both desktop and iOS. A native iOS build would need a Mac, Xcode, a developer account and a
@@ -135,7 +144,8 @@ docs/
 web-tests/
   dsp.test.mjs          109 checks against signals with known answers
   robustness.test.mjs    31 checks on imperfect readers: missed words, rephrasings, skipped lines
-  live.test.mjs          36 checks driving the real microphone path in Chromium
+  live.test.mjs          37 checks driving the real microphone path in Chromium,
+                         run at the site root and again under a /repo/ base path
 ```
 
 Run them with `node web-tests/<name>.test.mjs`. The live test feeds
