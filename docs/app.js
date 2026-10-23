@@ -127,7 +127,8 @@ async function toggleRecord() {
     return;
   }
   if (!Recorder.supported()) {
-    showNote("This browser cannot record audio. Use the file option, or open the page in Safari or Chrome.");
+    showNote("This browser cannot record audio. Use the file option, or open the page in Safari or Chrome.",
+             { diag: true });
     return;
   }
   try {
@@ -159,18 +160,28 @@ async function toggleRecord() {
       : n === "SecurityError" ? "The microphone needs a secure connection. Open this page over https."
       : n === "TimeoutError" ? "The microphone never answered. A shield or privacy setting is usually the cause: in Brave tap the lion by the address bar and turn Shields down for this site, or try the page in Safari or Chrome."
       : n === "NotSupportedError" ? "This browser will not give a web page the microphone. Try Safari or Chrome, or record on your phone's voice memo app and use \u201cAnalyse a file instead\u201d."
-      : "Could not start recording: " + (e && e.message ? e.message : "unknown error"));
+      : "Could not start recording: " + (e && e.message ? e.message : "unknown error"),
+      { diag: true });
   }
 }
 
 /** Say something the user will actually see. On a phone the Coach card sits below the passage, so
  *  a note placed only there can render a thousand pixels below the fold and the button looks dead.
  *  Everything goes to the dock as well, which is fixed to the bottom of the screen. */
-function showNote(msg) {
+function showNote(msg, opts) {
   for (const id of ["micnote", "dockmsg"]) {
     const n = $(id);
     if (!n) continue;
     n.textContent = msg;
+    // A microphone failure is the one case where the page cannot diagnose itself: offer the
+    // standalone check, which asks for the microphone on its own and names what came back.
+    if (opts && opts.diag) {
+      n.appendChild(document.createTextNode(" "));
+      const a = document.createElement("a");
+      a.href = "./check.html";
+      a.textContent = "Run the microphone check.";
+      n.appendChild(a);
+    }
     n.hidden = false;
   }
 }

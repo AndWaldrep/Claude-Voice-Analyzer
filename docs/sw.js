@@ -1,7 +1,8 @@
 /* Offline cache, so practice works without a signal. Bump VERSION to roll the cache. */
-const VERSION = "promptbook-v1";
+const VERSION = "promptbook-v2";
 const ASSETS = ["./", "./index.html", "./app.js", "./dsp.js", "./modes.js",
-                "./capture.js", "./worklet.js", "./manifest.webmanifest",
+                "./capture.js", "./worklet.js", "./benchmarks.js", "./check.html",
+                "./manifest.webmanifest",
                 "./icon-180.png", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

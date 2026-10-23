@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Microphone check</title>
+<meta name="theme-color" content="#eceef1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12171f" media="(prefers-color-scheme: dark)">
+<style>
+/* Deliberately plain and self-contained: this page has to work when the app does not. */
+:root{ --ink:#1b2330; --muted:#5a6676; --ground:#eceef1; --panel:#ffffff; --rule:#d4d8de;
+  --brass:#9a6b1f; --good:#1f7a4d; --bad:#a6352f; color-scheme:light }
+@media (prefers-color-scheme:dark){:root{ --ink:#e7eaef; --muted:#9aa5b5; --ground:#12171f;
+  --panel:#1a212b; --rule:#2d3744; --brass:#d8a94e; --good:#4cc08a; --bad:#e8766c; color-scheme:dark }}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);line-height:1.5;
+  font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+.wrap{max-width:620px;margin:0 auto;padding:22px max(16px,env(safe-area-inset-left,0)) 48px max(16px,env(safe-area-inset-right,0))}
+h1{font-size:23px;margin:0 0 4px;letter-spacing:-.01em}
+p.sub{color:var(--muted);margin:0 0 18px;font-size:14px}
+button{font:inherit;font-weight:600;cursor:pointer;border-radius:4px;padding:14px 18px;width:100%;
+  border:1px solid var(--brass);background:var(--brass);color:#fff;margin-bottom:14px}
+button.ghost{background:transparent;color:var(--ink);border-color:var(--rule);font-weight:500;padding:11px 16px}
+#live{font-size:30px;font-weight:600;text-align:center;padding:14px;border:1px solid var(--rule);
+  border-radius:4px;background:var(--panel);margin-bottom:14px;font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--rule);border-radius:4px}
+td{padding:9px 11px;border-top:1px solid var(--rule);vertical-align:top;font-size:13.5px}
+tr:first-child td{border-top:0}
+td:first-child{color:var(--muted);width:42%}
+td:last-child{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;word-break:break-word}
+.ok{color:var(--good);font-weight:600}
+.no{color:var(--bad);font-weight:600}
+.note{border-left:3px solid var(--brass);background:var(--panel);padding:11px 13px;border-radius:3px;
+  margin:14px 0;font-size:13.5px}
+a{color:var(--brass)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Microphone check</h1>
+  <p class="sub">This page does one thing: it asks your browser for the microphone and reports
+    exactly what came back. Press the button, then send the result.</p>
+
+  <button id="go" type="button">Test the microphone</button>
+  <div id="live">&mdash;</div>
+  <div id="advice"></div>
+  <table id="out"><tbody></tbody></table>
+  <button class="ghost" id="copy" type="button">Copy this report</button>
+  <p class="sub"><a href="./">Back to Prompt Book</a></p>
+</div>
+
+<script>
+/* Classic script, no modules and no modern syntax, so an old or locked-down engine still runs it. */
+(function () {
+  var rows = [];
+  function add(label, value, state) {
+    rows.push([label, String(value), state || ""]);
+    render();
+  }
+  function render() {
+    var html = "";
+    for (var i = 0; i < rows.length; i++) {
+      var cls = rows[i][2] === "ok" ? "ok" : rows[i][2] === "no" ? "no" : "";
+      html += "<tr><td>" + rows[i][0] + "</td><td class='" + cls + "'>" + rows[i][1] + "</td></tr>";
+    }
+    document.querySelector("#out tbody").innerHTML = html;
+  }
+  function advise(text) {
+    document.getElementById("advice").innerHTML = '<div class="note">' + text + "</div>";
+  }
+
+  /* Bind the buttons before probing anything. A single throw while collecting the environment
+     would otherwise leave the page with a button that does nothing — which is the exact symptom
+     this page exists to explain. Touching AudioContext.prototype.audioWorklet, for one, throws
+     "Illegal invocation" in Chromium, because it is an accessor with a receiver check. */
+  document.getElementById("go").onclick = onGo;
+  document.getElementById("copy").onclick = onCopy;
+
+  var hasMD = false, AC = null;
+  try { probe(); } catch (e) { add("Environment probe", "threw: " + (e && e.message), "no"); }
+
+  function probe() {
+  var ua = navigator.userAgent || "";
+  var isBrave = !!(navigator.brave && navigator.brave.isBrave) || /Brave/i.test(ua);
+  add("Browser", ua.length > 90 ? ua.slice(0, 90) + "…" : ua);
+  add("Looks like Brave", isBrave ? "yes" : "no");
+  add("Secure connection", window.isSecureContext ? "yes" : "NO — required",
+      window.isSecureContext ? "ok" : "no");
+  add("Address", location.protocol + "//" + location.host);
+  hasMD = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  add("navigator.mediaDevices", hasMD ? "available" : "MISSING", hasMD ? "ok" : "no");
+  var legacy = !!(navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia);
+  add("Older getUserMedia", legacy ? "available" : "not present");
+  AC = window.AudioContext || window.webkitAudioContext;
+  add("Web Audio", AC ? "available" : "MISSING", AC ? "ok" : "no");
+  add("AudioWorklet", (AC && AC.prototype && "audioWorklet" in AC.prototype) ||
+      typeof AudioWorkletNode !== "undefined" ? "available" : "not present (a fallback is used)");
+  add("Standalone (home screen)", (window.navigator.standalone === true ||
+      (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)) ? "yes" : "no");
+
+  if (!hasMD) {
+    advise("This browser is not offering the microphone to web pages at all. That is the whole " +
+      "problem: nothing the page does can work around it. Open the same link in <b>Safari</b> " +
+      "(iPhone) or <b>Chrome</b> (Android). Failing that, record in your phone's voice memo app " +
+      "and use “Analyse a file instead” on the main page, which needs no microphone.");
+  }
+  }
+
+  function onGo() {
+    var btn = document.getElementById("go");
+    btn.disabled = true;
+    btn.textContent = "Asking…";
+    document.getElementById("live").textContent = "waiting for permission…";
+
+    if (!hasMD) {
+      add("Result", "cannot ask — no getUserMedia in this browser", "no");
+      btn.disabled = false; btn.textContent = "Test the microphone";
+      return;
+    }
+
+    var settled = false;
+    var timer = setTimeout(function () {
+      if (settled) return;
+      settled = true;
+      add("Result", "NO ANSWER after 15 seconds", "no");
+      document.getElementById("live").textContent = "no answer";
+      advise("The request never came back: no prompt, no refusal. A shield or privacy setting is " +
+        "almost always the cause. In <b>Brave</b>, tap the lion beside the address bar and turn " +
+        "Shields <b>down</b> for this site, then press the button again. If that does not help, " +
+        "try the same link in Safari or Chrome.");
+      btn.disabled = false; btn.textContent = "Test again";
+    }, 15000);
+
+    navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    }).then(function (stream) {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      var tracks = stream.getAudioTracks ? stream.getAudioTracks() : [];
+      add("Result", "granted", "ok");
+      add("Audio tracks", tracks.length, tracks.length ? "ok" : "no");
+      if (tracks.length) {
+        add("Microphone", tracks[0].label || "(unnamed)");
+        var st = tracks[0].getSettings ? tracks[0].getSettings() : {};
+        add("Sample rate", st.sampleRate || "not reported");
+        add("Gain control off", st.autoGainControl === false ? "yes" : String(st.autoGainControl));
+      }
+      if (!tracks.length) {
+        advise("Permission was granted but the stream contains no audio. That is a refusal in " +
+          "disguise, usually a privacy shield. In Brave, turn Shields down for this site.");
+        btn.disabled = false; btn.textContent = "Test again";
+        return;
+      }
+      // show a live level, which proves sound is actually arriving
+      try {
+        var ctx = new AC();
+        if (ctx.state === "suspended" && ctx.resume) ctx.resume();
+        add("Audio context", ctx.state + " at " + ctx.sampleRate + " Hz", "ok");
+        var an = ctx.createAnalyser();
+        an.fftSize = 2048;
+        ctx.createMediaStreamSource(stream).connect(an);
+        var buf = new Float32Array(an.fftSize), peak = 0;
+        (function tick() {
+          an.getFloatTimeDomainData(buf);
+          var s = 0;
+          for (var i = 0; i < buf.length; i++) s += buf[i] * buf[i];
+          var rms = Math.sqrt(s / buf.length);
+          if (rms > peak) peak = rms;
+          var db = 20 * Math.log(rms + 1e-10) / Math.LN10;
+          document.getElementById("live").textContent =
+            rms > 0.0015 ? Math.round(db) + " dB — speak now" : "silence";
+          requestAnimationFrame(tick);
+        })();
+        advise("The microphone is working. Say something and the number above should move. If it " +
+          "does, the main page will work too — go back and press record.");
+      } catch (err) {
+        add("Audio context", "failed: " + (err && err.message), "no");
+      }
+      btn.disabled = false; btn.textContent = "Test again";
+    }).catch(function (err) {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      var name = (err && err.name) || "unknown";
+      add("Result", "refused: " + name, "no");
+      add("Message", (err && err.message) || "(none)");
+      document.getElementById("live").textContent = "refused";
+      if (name === "NotAllowedError") {
+        advise("The browser refused. If you never saw a prompt, something blocked it before you " +
+          "could answer. In <b>Brave</b>, tap the lion beside the address bar and turn Shields " +
+          "<b>down</b> for this site, then press the button again. If you did see a prompt and " +
+          "denied it, clear this site's permissions in browser settings and try again.");
+      } else if (name === "NotFoundError") {
+        advise("No microphone was offered to the browser at all. On a phone that usually means the " +
+          "browser itself lacks microphone permission from the operating system: check your phone's " +
+          "Settings for this browser and allow the microphone there.");
+      } else if (name === "NotReadableError") {
+        advise("The microphone exists but could not be opened, usually because another app holds it. " +
+          "Close anything recording or on a call, then try again.");
+      } else {
+        advise("Unexpected refusal. Try the same link in Safari or Chrome to see whether it is this " +
+          "browser specifically.");
+      }
+      btn.disabled = false; btn.textContent = "Test again";
+    });
+  }
+
+  function onCopy() {
+    var text = "Microphone check\n";
+    for (var i = 0; i < rows.length; i++) text += rows[i][0] + ": " + rows[i][1] + "\n";
+    var btn = document.getElementById("copy");
+    function done() { btn.textContent = "Copied"; setTimeout(function () { btn.textContent = "Copy this report"; }, 1800); }
+    // A clipboard promise that never settles would leave the button silent, so the old
+    // textarea trick takes over if the modern path has not answered shortly.
+    var settled = false;
+    function once(fn) { if (settled) return; settled = true; fn(); }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      setTimeout(function () { once(fallback); }, 700);
+      navigator.clipboard.writeText(text).then(function () { once(done); },
+                                              function () { once(fallback); });
+    } else once(fallback);
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(); } catch (e) { btn.textContent = "Select the table and copy"; }
+      document.body.removeChild(ta);
+    }
+  }
+})();
+</script>
+</body>
+</html>
